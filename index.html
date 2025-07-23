@@ -108,8 +108,6 @@
     </div>
     <button id="insert-wall">Insert Wall</button>
     <button id="insert-item">Insert Item (Cube)</button>
-    <button id="insert-door">Insert a Door</button>
-    <button id="insert-window">Insert a Window</button>
     <hr>
     <h3>Controls</h3>
     <button id="metering-button">Start Metering</button>
@@ -119,29 +117,23 @@
     <div id="selected-object-controls" class="control-section" style="display: none;">
         <hr><h3>Selected Object</h3>
         <button id="remove-object">Remove Selected</button>
-        <!-- Wall -->
-        <div id="wall-editor-controls">
-            <div class="input-group"><label for="edit-wall-length">Length (mm):</label><input type="number" id="edit-wall-length"></div>
-            <div class="input-group"><label for="edit-wall-angle">Angle (°):</label><input type="number" id="edit-wall-angle"></div>
+        <!-- Wall-specific controls -->
+        <div id="wall-editor-controls" style="display: none;">
+            <div class="input-group">
+                <label for="edit-wall-length">Length (mm):</label>
+                <input type="number" id="edit-wall-length">
+            </div>
+            <div class="input-group">
+                <label for="edit-wall-angle">Angle (°):</label>
+                <input type="number" id="edit-wall-angle">
+            </div>
         </div>
-        <!-- Item -->
-        <div id="item-editor-controls">
+        <!-- Item-specific controls -->
+        <div id="item-editor-controls" style="display: none;">
             <div class="input-group"><label for="item-width">Width (mm):</label><input type="number" id="item-width"></div>
             <div class="input-group"><label for="item-depth">Depth (mm):</label><input type="number" id="item-depth"></div>
             <div class="input-group"><label for="item-height">Height (mm):</label><input type="number" id="item-height"></div>
             <div class="input-group"><label for="item-y-position">Vertical Position (mm):</label><input type="number" id="item-y-position"></div>
-        </div>
-        <!-- Door -->
-        <div id="door-editor-controls">
-            <div class="input-group"><label for="door-width">Width (mm):</label><input type="number" id="door-width"></div>
-            <div class="input-group"><label for="door-height">Height (mm):</label><input type="number" id="door-height"></div>
-            <button id="toggle-door">Open/Close Door</button>
-        </div>
-        <!-- Window -->
-        <div id="window-editor-controls">
-             <div class="input-group"><label for="window-width">Width (mm):</label><input type="number" id="window-width"></div>
-            <div class="input-group"><label for="window-height">Height (mm):</label><input type="number" id="window-height"></div>
-            <div class="input-group"><label for="window-y-position">Vertical Position (mm):</label><input type="number" id="window-y-position"></div>
         </div>
     </div>
     
@@ -149,9 +141,18 @@
     <h3>3D View</h3>
     <button id="toggle-3d">Switch to 3D</button>
     <div id="view-controls">
-        <div class="input-group"><label for="wall-color">Selected Wall 3D Color:</label><input type="color" id="wall-color" value="#ffffff"></div>
-        <div class="input-group"><label for="floor-color">Floor Color:</label><input type="color" id="floor-color" value="#808080"></div>
-        <div class="input-group"><label for="wall-height">Default Wall Height (mm):</label><input type="number" id="wall-height" value="2400"></div>
+        <div class="input-group">
+            <label for="wall-color">Selected Wall 3D Color:</label>
+            <input type="color" id="wall-color" value="#ffffff">
+        </div>
+        <div class="input-group">
+            <label for="floor-color">Floor Color:</label>
+            <input type="color" id="floor-color" value="#808080">
+        </div>
+        <div class="input-group">
+            <label for="wall-height">Default Wall Height (mm):</label>
+            <input type="number" id="wall-height" value="2400">
+        </div>
     </div>
 </div>
 
@@ -169,7 +170,6 @@
             <li><b>Pan View:</b> <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> keys.</li>
             <li><b>Zoom:</b> Mouse Wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Select/Move/Rotate:</b> Click and drag objects. Use rotation handles.</li>
-            <li><b>Snapping:</b> Drag a Door or Window over a Wall to snap it in place.</li>
             <li><b>Multi-Select:</b> Hold <kbd>Shift</kbd> and click multiple objects.</li>
             <li><b>Metering:</b> Activate metering mode, then click on the canvas to draw a measuring line. Click near the start point to close the loop and calculate area.</li>
         </ul>
@@ -188,7 +188,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three-csg-ts@3.1.11/dist/index.min.js"></script>
 
 <script>
     const canvasContainer = document.getElementById('canvas-container');
@@ -205,7 +204,7 @@
         preserveObjectStacking: true,
         renderOnAddRemove: false
     });
-    const customProps = ['isWall', 'isItem', 'isDoor', 'isWindow', 'itemProps', 'doorProps', 'windowProps', 'uid', 'color3d', 'parentWallUid'];
+    const customProps = ['isWall', 'isItem', 'itemProps', 'uid', 'color3d'];
     let lengthTextObjects = {};
 
     // --- Metering State ---
@@ -238,20 +237,18 @@
     
     document.getElementById('insert-wall').addEventListener('click', insertWall);
     document.getElementById('insert-item').addEventListener('click', insertItem);
-    document.getElementById('insert-door').addEventListener('click', insertDoor);
-    document.getElementById('insert-window').addEventListener('click', insertWindow);
     document.getElementById('remove-object').addEventListener('click', removeSelectedObject);
     document.getElementById('toggle-lengths').addEventListener('click', toggleLengthVisibility);
     document.getElementById('toggle-3d').addEventListener('click', toggle3DMode);
     document.getElementById('metering-button').addEventListener('click', toggleMeteringMode);
-    document.getElementById('toggle-door').addEventListener('click', toggleDoorState);
-    
+
     document.getElementById('edit-wall-length').addEventListener('input', updateWallFromMenu);
     document.getElementById('edit-wall-angle').addEventListener('input', updateWallFromMenu);
     document.getElementById('wall-color').addEventListener('input', update3DColorFromMenu);
-    ['item-width', 'item-depth', 'item-height', 'item-y-position'].forEach(id => document.getElementById(id).addEventListener('input', updateItemFromMenu));
-    ['door-width', 'door-height'].forEach(id => document.getElementById(id).addEventListener('input', updateDoorFromMenu));
-    ['window-width', 'window-height', 'window-y-position'].forEach(id => document.getElementById(id).addEventListener('input', updateWindowFromMenu));
+    
+    ['item-width', 'item-depth', 'item-height', 'item-y-position'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateItemFromMenu);
+    });
 
     window.addEventListener('resize', onWindowResize);
     
@@ -259,13 +256,6 @@
     function updateTextForObject(obj) {
         if (!showLengths || !obj) return;
         if (obj.isWall) updateLengthTextFor(obj);
-    }
-    
-    function handleObjectMoving(e) {
-        const obj = e.target;
-        if (obj.isDoor || obj.isWindow) handleSnapping(obj);
-        if (obj.isWall) updateTextForObject(obj);
-        if (obj.isDoor) obj.doorArc?.setCoords();
     }
 
     canvas2d.on({
@@ -275,15 +265,13 @@
         'selection:updated': updateMenu,
         'selection:cleared': updateMenu,
         'object:modified': (e) => updateMenu(e),
-        'object:moving': handleObjectMoving,
-        'object:rotating': (e) => {
-            updateTextForObject(e.target);
-            if (e.target.isDoor) e.target.doorArc?.setCoords();
-        },
+        'object:moving': (e) => updateTextForObject(e.target),
+        'object:rotating': (e) => updateTextForObject(e.target),
         'object:scaling': (e) => updateTextForObject(e.target)
     });
 
     // --- Core Functions ---
+
     function removeSelectedObject() {
         canvas2d.getActiveObjects().forEach(activeObject => {
             if (lengthTextObjects[activeObject.uid]) {
@@ -291,13 +279,9 @@
                 delete lengthTextObjects[activeObject.uid];
             }
             if (sceneObjects3D[activeObject.uid]) {
-                const obj3d = sceneObjects3D[activeObject.uid];
-                obj3d.geometry?.dispose();
-                obj3d.material?.dispose();
-                scene.remove(obj3d);
+                scene.remove(sceneObjects3D[activeObject.uid]);
                 delete sceneObjects3D[activeObject.uid];
             }
-            if (activeObject.doorArc) canvas2d.remove(activeObject.doorArc);
             canvas2d.remove(activeObject);
         });
         canvas2d.discardActiveObject();
@@ -305,7 +289,7 @@
     }
 
     function saveToFile() {
-        const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject && !o.isDoorArc);
+        const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject);
         const json = canvas2d.toObject(customProps);
         json.objects = originalObjects.map(o => o.toObject(customProps));
         const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(json, null, 2))}`;
@@ -325,7 +309,6 @@
             canvas2d.loadFromJSON(f.target.result, () => {
                 canvas2d.getObjects().forEach(obj => {
                     if (obj.uid === undefined) obj.uid = ++uidCounter;
-                    if (obj.isDoor) createDoorArc(obj);
                 });
                 updateAllLengthTexts();
                 canvas2d.requestRenderAll();
@@ -335,7 +318,6 @@
         e.target.value = '';
     }
     
-    // --- Camera & View Controls ---
     function handleGlobalKeys(e) {
         const key = e.key.toLowerCase();
         if (key === 'r' || key === 'f') {
@@ -401,53 +383,36 @@
         if (keyState['arrowdown']) camera.position.y -= moveSpeed;
     }
 
-    // --- Object Insertion ---
     function insertWall() {
+        const length = document.getElementById('wall-length').value;
         const wall = new fabric.Rect({
-            width: document.getElementById('wall-length').value * scale, height: 10, fill: 'black',
-            left: 50, top: 50, originX: 'left', originY: 'top', isWall: true, uid: ++uidCounter
+            width: length * scale, height: 10, fill: 'black', left: 50, top: 50,
+            originX: 'left', originY: 'top', isWall: true, uid: ++uidCounter
         });
         canvas2d.add(wall);
-        if (showLengths) updateLengthTextFor(wall);
+
+        if (showLengths) {
+            updateLengthTextFor(wall);
+        }
+        
         canvas2d.requestRenderAll();
     }
 
     function insertItem() {
         const item = new fabric.Rect({
             width: 600 * scale, height: 600 * scale, fill: '#A52A2A', left: 200, top: 200,
-            isItem: true, itemProps: { width: 600, depth: 600, height: 800, y: 0, color: '#A52A2A' }, uid: ++uidCounter
+            isItem: true, 
+            itemProps: { width: 600, depth: 600, height: 800, y: 0, color: '#A52A2A' }, 
+            uid: ++uidCounter
         });
         canvas2d.add(item).requestRenderAll();
     }
-    
-    function insertDoor() {
-        const doorProps = { width: 800, height: 2000, isOpen: false };
-        const doorGroup = new fabric.Group([
-            new fabric.Rect({ width: doorProps.width * scale, height: 10, fill: 'white', stroke: 'black', strokeWidth: 1, originX: 'center', originY: 'center' })
-        ], {
-            left: 150, top: 150, isDoor: true, doorProps: doorProps, uid: ++uidCounter, hasControls: false, hasBorders: true
-        });
-        createDoorArc(doorGroup);
-        canvas2d.add(doorGroup).requestRenderAll();
-    }
 
-    function insertWindow() {
-        const windowProps = { width: 1200, height: 1000, y: 900 };
-        const windowGroup = new fabric.Group([
-            new fabric.Rect({ width: windowProps.width * scale, height: 10, fill: 'white', stroke: 'black', strokeWidth: 1 }),
-            new fabric.Line([0, 5, windowProps.width * scale, 5], { stroke: 'black', strokeWidth: 1 })
-        ], {
-            left: 150, top: 150, isWindow: true, windowProps: windowProps, uid: ++uidCounter, hasControls: false, hasBorders: true
-        });
-        canvas2d.add(windowGroup).requestRenderAll();
-    }
-    
-    // --- Menu Update Functions ---
     function updateMenu(e) {
         if (isMeteringMode) return;
-        ['selected-object-controls', 'wall-editor-controls', 'item-editor-controls', 'door-editor-controls', 'window-editor-controls'].forEach(id => {
-            document.getElementById(id).style.display = 'none';
-        });
+        document.getElementById('selected-object-controls').style.display = 'none';
+        document.getElementById('wall-editor-controls').style.display = 'none';
+        document.getElementById('item-editor-controls').style.display = 'none';
         
         const activeObjects = canvas2d.getActiveObjects();
         if (activeObjects.length === 0) return;
@@ -462,23 +427,16 @@
                 document.getElementById('edit-wall-angle').value = Math.round(obj.angle);
             } else if (obj.isItem) {
                 document.getElementById('item-editor-controls').style.display = 'block';
+                
                 const currentWidthMM = obj.getScaledWidth() / scale;
                 const currentDepthMM = obj.getScaledHeight() / scale;
                 obj.itemProps.width = currentWidthMM;
                 obj.itemProps.depth = currentDepthMM;
+                
                 document.getElementById('item-width').value = Math.round(currentWidthMM);
                 document.getElementById('item-depth').value = Math.round(currentDepthMM);
                 document.getElementById('item-height').value = obj.itemProps.height;
                 document.getElementById('item-y-position').value = obj.itemProps.y || 0;
-            } else if (obj.isDoor) {
-                document.getElementById('door-editor-controls').style.display = 'block';
-                document.getElementById('door-width').value = obj.doorProps.width;
-                document.getElementById('door-height').value = obj.doorProps.height;
-            } else if (obj.isWindow) {
-                document.getElementById('window-editor-controls').style.display = 'block';
-                document.getElementById('window-width').value = obj.windowProps.width;
-                document.getElementById('window-height').value = obj.windowProps.height;
-                document.getElementById('window-y-position').value = obj.windowProps.y;
             }
         }
     }
@@ -486,7 +444,14 @@
     function updateWallFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isWall) return;
-        activeObject.set({ width: document.getElementById('edit-wall-length').value * scale, angle: parseFloat(document.getElementById('edit-wall-angle').value) });
+
+        const newLength = document.getElementById('edit-wall-length').value;
+        const newAngle = document.getElementById('edit-wall-angle').value;
+
+        activeObject.set({
+            width: newLength * scale,
+            angle: parseFloat(newAngle)
+        });
         activeObject.scaleX = 1;
         activeObject.setCoords();
         canvas2d.requestRenderAll();
@@ -495,105 +460,41 @@
     
     function update3DColorFromMenu() {
         const color = document.getElementById('wall-color').value;
-        canvas2d.getActiveObjects().forEach(obj => { if (obj.isWall) obj.color3d = color; });
+        canvas2d.getActiveObjects().forEach(obj => {
+            if (obj.isWall) obj.color3d = color;
+        });
         if (is3DMode) update3DScene();
     }
 
     function updateItemFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isItem) return;
+        
         const props = activeObject.itemProps;
         props.width = document.getElementById('item-width').value;
         props.depth = document.getElementById('item-depth').value;
         props.height = document.getElementById('item-height').value;
         props.y = parseFloat(document.getElementById('item-y-position').value) || 0;
-        activeObject.set({ width: props.width * scale, height: props.depth * scale, scaleX: 1, scaleY: 1 }).setCoords();
-        canvas2d.requestRenderAll();
-        if (is3DMode) liveUpdate3DObject(activeObject);
-    }
-    
-    function updateDoorFromMenu() {
-        const door = canvas2d.getActiveObject();
-        if (!door || !door.isDoor) return;
-        door.doorProps.width = parseFloat(document.getElementById('door-width').value);
-        door.doorProps.height = parseFloat(document.getElementById('door-height').value);
-        door.getObjects()[0].set('width', door.doorProps.width * scale);
-        door.addWithUpdate();
-        createDoorArc(door);
-        canvas2d.requestRenderAll();
-        if(is3DMode) update3DScene();
-    }
-    
-    function updateWindowFromMenu() {
-        const win = canvas2d.getActiveObject();
-        if (!win || !win.isWindow) return;
-        win.windowProps.width = parseFloat(document.getElementById('window-width').value);
-        win.windowProps.height = parseFloat(document.getElementById('window-height').value);
-        win.windowProps.y = parseFloat(document.getElementById('window-y-position').value);
-        const rect = win.getObjects()[0];
-        const line = win.getObjects()[1];
-        rect.set('width', win.windowProps.width * scale);
-        line.set('x2', win.windowProps.width * scale);
-        win.addWithUpdate();
-        canvas2d.requestRenderAll();
-        if(is3DMode) update3DScene();
-    }
 
-    // --- Object-specific functions ---
-    function toggleDoorState() {
-        const door = canvas2d.getActiveObject();
-        if (!door || !door.isDoor) return;
-        door.doorProps.isOpen = !door.doorProps.isOpen;
-        if (door.doorArc) door.doorArc.visible = door.doorProps.isOpen;
+        activeObject.set({
+            width: props.width * scale,
+            height: props.depth * scale,
+            scaleX: 1,
+            scaleY: 1
+        }).setCoords();
+        
         canvas2d.requestRenderAll();
-        if (is3DMode) liveUpdate3DObject(door);
-    }
-    
-    function createDoorArc(door) {
-        if (door.doorArc) canvas2d.remove(door.doorArc);
-        const width = door.doorProps.width * scale;
-        const path = `M 0 0 A ${width} ${width} 0 0 1 ${width} ${width}`;
-        const arc = new fabric.Path(path, {
-            stroke: '#888', strokeWidth: 1, fill: '', originX: 'left', originY: 'bottom',
-            visible: door.doorProps.isOpen, isDoorArc: true, evented: false
-        });
-        door.doorArc = arc;
-        const updateArc = () => {
-            if (!door.doorArc) return;
-            const matrix = door.calcTransformMatrix();
-            const d = fabric.util.qrDecompose(matrix);
-            door.doorArc.set({ left: d.translateX, top: d.translateY, angle: d.angle });
-            door.doorArc.setCoords();
-        };
-        door.on('moving', updateArc);
-        door.on('rotating', updateArc);
-        updateArc();
-        canvas2d.add(arc);
-    }
-    
-    function handleSnapping(obj) {
-        let snapped = false;
-        for (const wall of canvas2d.getObjects().filter(o => o.isWall)) {
-            if (obj.intersectsWithObject(wall)) {
-                obj.set({ angle: wall.angle });
-                const wallStart = wall.getPointByOrigin('left', 'center');
-                const v = new fabric.Point(wall.getScaledWidth(), 0).rotate(fabric.util.degreesToRadians(wall.angle));
-                const u = obj.getCenterPoint().subtract(wallStart);
-                const dot = u.dot(v.normalize());
-                if (dot >= 0 && dot <= wall.getScaledWidth()) {
-                    const snappedPoint = wallStart.add(v.normalize().multiply(dot));
-                    obj.set({ left: snappedPoint.x, top: snappedPoint.y });
-                }
-                obj.setCoords();
-                obj.parentWallUid = wall.uid;
-                snapped = true;
-                break;
+        
+        if (is3DMode) {
+            const mesh3d = sceneObjects3D[activeObject.uid];
+            if (mesh3d) {
+                mesh3d.geometry.dispose();
+                mesh3d.geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
+                mesh3d.position.y = (props.height * scale) / 2 + (props.y * scale);
             }
         }
-        if (!snapped) obj.parentWallUid = null;
     }
     
-    // --- Length Text Functions ---
     function toggleLengthVisibility() {
         showLengths = !showLengths;
         Object.values(lengthTextObjects).forEach(text => text.visible = showLengths);
@@ -617,21 +518,26 @@
     function updateLengthTextFor(wall) {
         let textObj = lengthTextObjects[wall.uid];
         if (!textObj) {
-            textObj = new fabric.Text('', { fontSize: 12, fill: 'black', originX: 'center', originY: 'center', selectable: false, evented: false, textBaseline: 'middle' });
+            textObj = new fabric.Text('', { fontSize: 12, fill: 'black', originX: 'center', originY: 'center', selectable: false, evented: false });
             lengthTextObjects[wall.uid] = textObj;
             canvas2d.add(textObj);
         }
+
         textObj.visible = true;
         textObj.text = `${Math.round(wall.getScaledWidth() / scale)} mm`;
         const d = fabric.util.qrDecompose(wall.calcTransformMatrix());
         const center = new fabric.Point(d.translateX, d.translateY);
         const offset = new fabric.Point(0, -20);
         const rotatedOffset = fabric.util.rotatePoint(offset, new fabric.Point(0,0), fabric.util.degreesToRadians(d.angle));
-        textObj.set({ left: center.x + rotatedOffset.x, top: center.y + rotatedOffset.y, angle: d.angle });
+        
+        textObj.set({
+            left: center.x + rotatedOffset.x,
+            top: center.y + rotatedOffset.y,
+            angle: d.angle
+        });
         textObj.bringToFront();
     }
 
-    // --- Window/View Management ---
     function onWindowResize() {
         const w = canvasContainer.clientWidth, h = canvasContainer.clientHeight;
         canvas2d.setDimensions({ width: w, height: h });
@@ -658,6 +564,124 @@
         }
     }
 
+    // --- Metering Functions ---
+    
+    function toggleMeteringMode() {
+        const btn = document.getElementById('metering-button');
+        isMeteringMode = !isMeteringMode;
+        if (isMeteringMode) {
+            btn.textContent = 'Cancel Metering';
+            btn.classList.add('active');
+            clearMetering(); // Clear any previous measurement
+            canvas2d.selection = false;
+            canvas2d.forEachObject(o => o.set('evented', false));
+        } else {
+            btn.textContent = 'Start Metering';
+            btn.classList.remove('active');
+            clearMetering();
+            canvas2d.selection = true;
+            canvas2d.forEachObject(o => o.set('evented', true));
+        }
+    }
+
+    function clearMetering() {
+        canvas2d.remove(...meteringObjects);
+        meteringObjects = [];
+        meteringPoints = [];
+        canvas2d.requestRenderAll();
+    }
+
+    function handleMouseDown(opt) {
+        if (!isMeteringMode) return;
+        const pointer = canvas2d.getPointer(opt.e);
+
+        // Check for loop close
+        if (meteringPoints.length > 2) {
+            const startPoint = meteringPoints[0];
+            const dist = Math.sqrt(Math.pow(startPoint.x - pointer.x, 2) + Math.pow(startPoint.y - pointer.y, 2));
+            if (dist < 10) { // Close loop if click is near start point
+                drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
+                calculateAndShowArea();
+                // End metering session, requires user to click cancel/start to do another
+                isMeteringMode = false; 
+                return;
+            }
+        }
+
+        meteringPoints.push(pointer);
+        const circle = new fabric.Circle({
+            radius: 3, fill: 'red', left: pointer.x, top: pointer.y,
+            originX: 'center', originY: 'center', isMeteringObject: true
+        });
+        meteringObjects.push(circle);
+        canvas2d.add(circle);
+
+        if (meteringPoints.length > 1) {
+            const prevPoint = meteringPoints[meteringPoints.length - 2];
+            drawMeteringLine(prevPoint, pointer);
+        }
+    }
+
+    function drawMeteringLine(p1, p2) {
+        const line = new fabric.Line([p1.x, p1.y, p2.x, p2.y], {
+            stroke: 'red', strokeWidth: 2, selectable: false, evented: false, isMeteringObject: true
+        });
+        meteringObjects.push(line);
+        canvas2d.add(line);
+        
+        // Add length text
+        const lengthPx = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+        const lengthMM = lengthPx / scale;
+        const text = new fabric.Text(`${Math.round(lengthMM)} mm`, {
+            left: (p1.x + p2.x) / 2,
+            top: (p1.y + p2.y) / 2,
+            fontSize: 14,
+            fill: 'black',
+            originX: 'center',
+            originY: 'center',
+            isMeteringObject: true
+        });
+        meteringObjects.push(text);
+        canvas2d.add(text);
+    }
+    
+    function calculateAndShowArea() {
+        // Shoelace formula for area in pixels
+        let areaPx = 0;
+        for (let i = 0; i < meteringPoints.length; i++) {
+            const p1 = meteringPoints[i];
+            const p2 = meteringPoints[(i + 1) % meteringPoints.length];
+            areaPx += (p1.x * p2.y - p2.x * p1.y);
+        }
+        areaPx = Math.abs(areaPx) / 2;
+
+        // Convert px² to m²
+        const mPerPx = 1 / scale / 1000;
+        const areaM2 = areaPx * mPerPx * mPerPx;
+        
+        // Find centroid to place text
+        let centroid = { x: 0, y: 0 };
+        meteringPoints.forEach(p => {
+            centroid.x += p.x;
+            centroid.y += p.y;
+        });
+        centroid.x /= meteringPoints.length;
+        centroid.y /= meteringPoints.length;
+
+        const areaText = new fabric.Text(`${areaM2.toFixed(2)} m²`, {
+            left: centroid.x,
+            top: centroid.y,
+            fontSize: 16,
+            fill: 'blue',
+            fontWeight: 'bold',
+            originX: 'center',
+            originY: 'center',
+            isMeteringObject: true
+        });
+        meteringObjects.push(areaText);
+        canvas2d.add(areaText);
+    }
+
     // --- 3D Scene Management ---
     function init3D() {
         scene = new THREE.Scene();
@@ -682,147 +706,47 @@
     }
     
     function update3DScene() {
-        Object.values(sceneObjects3D).forEach(obj => {
-            obj.geometry?.dispose();
-            if (obj.material) {
-                if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-                else obj.material.dispose();
-            }
-            if (obj.children) {
-                obj.children.forEach(child => {
-                    child.geometry?.dispose();
-                    child.material?.dispose();
-                });
-            }
-            scene.remove(obj);
-        });
+        Object.values(sceneObjects3D).forEach(obj => scene.remove(obj));
         sceneObjects3D = {};
+        const wallHeight = document.getElementById('wall-height').value * scale;
+        const defaultWallColor = '#ffffff'; 
         if(floor) floor.material.color.set(document.getElementById('floor-color').value);
+
+        canvas2d.getObjects().forEach(obj2d => {
+            if(obj2d.isLengthText || obj2d.isMeteringObject) return;
+            if (obj2d.isItem) create3DItem(obj2d);
+            else if (obj2d.isWall) create3DWall(obj2d, wallHeight, defaultWallColor);
+        });
+    }
+
+    function create3DWall(wall2d, wallHeight, defaultColor) {
+        const d = fabric.util.qrDecompose(wall2d.calcTransformMatrix());
+        const geometry = new THREE.BoxGeometry(wall2d.getScaledWidth(), wallHeight, wall2d.getScaledHeight());
+        const color = wall2d.color3d || defaultColor;
+        const material = new THREE.MeshStandardMaterial({ color: color });
+        const wall3d = new THREE.Mesh(geometry, material);
         
-        const objects2D = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject && !o.isDoorArc);
-        const walls = objects2D.filter(o => o.isWall);
-        const openings = objects2D.filter(o => o.isDoor || o.isWindow);
-
-        walls.forEach(wall2d => {
-            const wallMesh = createMeshAtWorldPosition(wall2d);
-            wallMesh.updateMatrixWorld(true);
-            let wallCSG = CSG.fromMesh(wallMesh);
-            
-            const wallOpenings = openings.filter(o => o.parentWallUid === wall2d.uid);
-            wallOpenings.forEach(opening2d => {
-                const cutterMesh = createCutterAtWorldPosition(opening2d);
-                cutterMesh.updateMatrixWorld(true);
-                const cutterCSG = CSG.fromMesh(cutterMesh);
-                wallCSG = wallCSG.subtract(cutterCSG);
-            });
-
-            const finalMesh = CSG.toMesh(wallCSG, wallMesh.matrix);
-            finalMesh.material = wallMesh.material;
-            
-            sceneObjects3D[wall2d.uid] = finalMesh;
-            scene.add(finalMesh);
-        });
-
-        openings.forEach(opening2d => {
-            if (opening2d.parentWallUid) {
-                if(opening2d.isDoor) create3DDoor(opening2d);
-                if(opening2d.isWindow) create3DWindow(opening2d);
-            }
-        });
-        objects2D.filter(o => o.isItem).forEach(item2d => create3DItem(item2d));
-    }
-
-    function createMeshAtWorldPosition(obj2d) {
-        const wallHeight = parseFloat(document.getElementById('wall-height').value) * scale;
-        const geometry = new THREE.BoxGeometry(obj2d.getScaledWidth(), wallHeight, obj2d.getScaledHeight());
-        const material = new THREE.MeshStandardMaterial({ color: obj2d.color3d || '#ffffff' });
-        const mesh3d = new THREE.Mesh(geometry, material);
-        const d = fabric.util.qrDecompose(obj2d.calcTransformMatrix());
-        mesh3d.position.set(d.translateX - canvas2d.width / 2, wallHeight / 2, d.translateY - canvas2d.height / 2);
-        mesh3d.rotation.y = -fabric.util.degreesToRadians(d.angle);
-        return mesh3d;
-    }
-
-    function createCutterAtWorldPosition(opening2d) {
-        const props = opening2d.isDoor ? opening2d.doorProps : opening2d.windowProps;
-        const width = (props.width || 800) * scale;
-        const height = (props.height || 2000) * scale;
-        const yPos = (props.y || 0) * scale;
-        const cutterGeo = new THREE.BoxGeometry(width, height, 50);
-        const cutterMat = new THREE.MeshBasicMaterial();
-        const cutterMesh = new THREE.Mesh(cutterGeo, cutterMat);
-        const d = fabric.util.qrDecompose(opening2d.calcTransformMatrix());
-        cutterMesh.position.set(d.translateX - canvas2d.width / 2, yPos + height / 2, d.translateY - canvas2d.height / 2);
-        cutterMesh.rotation.y = -fabric.util.degreesToRadians(d.angle);
-        return cutterMesh;
-    }
-    
-    function create3DDoor(door2d) {
-        const props = door2d.doorProps;
-        const d = fabric.util.qrDecompose(door2d.calcTransformMatrix());
-        const doorGroup = new THREE.Group();
-        const doorPanelGeo = new THREE.BoxGeometry(props.width * scale, props.height * scale, 4);
-        const doorPanelMat = new THREE.MeshStandardMaterial({ color: '#8B4513' });
-        const doorPanel = new THREE.Mesh(doorPanelGeo, doorPanelMat);
-        doorPanel.position.x = -props.width * scale / 2;
-        const pivot = new THREE.Group();
-        pivot.add(doorPanel);
-        if (props.isOpen) pivot.rotation.y = Math.PI / 2;
-        doorGroup.add(pivot);
-        doorGroup.position.set(d.translateX - canvas2d.width / 2, (props.height * scale) / 2, d.translateY - canvas2d.height / 2);
-        doorGroup.rotation.y = -fabric.util.degreesToRadians(d.angle);
-        sceneObjects3D[door2d.uid] = doorGroup;
-        scene.add(doorGroup);
-    }
-
-    function create3DWindow(window2d) {
-        const props = window2d.windowProps;
-        const d = fabric.util.qrDecompose(window2d.calcTransformMatrix());
-        const windowGroup = new THREE.Group();
-        const frameMat = new THREE.MeshStandardMaterial({ color: '#CCCCCC' });
-        const glassMat = new THREE.MeshStandardMaterial({ color: '#87CEEB', transparent: true, opacity: 0.3 });
-        const w = props.width * scale;
-        const h = props.height * scale;
-        const t = 10;
-        const topFrame = new THREE.Mesh(new THREE.BoxGeometry(w, t, t), frameMat);
-        topFrame.position.y = h/2 - t/2;
-        const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(w, t, t), frameMat);
-        bottomFrame.position.y = -h/2 + t/2;
-        const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(t, h, t), frameMat);
-        leftFrame.position.x = -w/2 + t/2;
-        const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(t, h, t), frameMat);
-        rightFrame.position.x = w/2 - t/2;
-        const glass = new THREE.Mesh(new THREE.BoxGeometry(w-t, h-t, 1), glassMat);
-        windowGroup.add(topFrame, bottomFrame, leftFrame, rightFrame, glass);
-        windowGroup.position.set(d.translateX - canvas2d.width / 2, (props.height * scale) / 2 + (props.y * scale), d.translateY - canvas2d.height / 2);
-        windowGroup.rotation.y = -fabric.util.degreesToRadians(d.angle);
-        sceneObjects3D[window2d.uid] = windowGroup;
-        scene.add(windowGroup);
+        wall3d.position.set(d.translateX - canvas2d.width / 2, wallHeight / 2, d.translateY - canvas2d.height / 2);
+        wall3d.rotation.y = -fabric.util.degreesToRadians(d.angle);
+        sceneObjects3D[wall2d.uid] = wall3d;
+        scene.add(wall3d);
     }
     
     function create3DItem(item2d) {
         const props = item2d.itemProps;
+        const color = props.color;
         const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
-        const material = new THREE.MeshStandardMaterial({ color: props.color });
+        const material = new THREE.MeshStandardMaterial({ color: color });
         const item3d = new THREE.Mesh(geometry, material);
         const center = item2d.getCenterPoint();
-        item3d.position.set(center.x - canvas2d.width/2, (props.height * scale)/2 + ((props.y || 0) * scale), center.y - canvas2d.height/2);
+        item3d.position.set(
+            center.x - canvas2d.width/2, 
+            (props.height * scale)/2 + ((props.y || 0) * scale), 
+            center.y - canvas2d.height/2
+        );
         item3d.rotation.y = -fabric.util.degreesToRadians(item2d.angle);
         sceneObjects3D[item2d.uid] = item3d;
         scene.add(item3d);
-    }
-
-    function liveUpdate3DObject(obj2d) {
-        const mesh3d = sceneObjects3D[obj2d.uid];
-        if (!mesh3d) return;
-        if (obj2d.isItem) {
-            const props = obj2d.itemProps;
-            mesh3d.geometry.dispose();
-            mesh3d.geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
-            mesh3d.position.y = (props.height * scale) / 2 + (props.y * scale);
-        } else if (obj2d.isDoor) {
-            mesh3d.children[0].rotation.y = obj2d.doorProps.isOpen ? Math.PI / 2 : 0;
-        }
     }
 
     // --- Main Animation Loop ---
@@ -836,85 +760,6 @@
             handle2DPan();
             canvas2d.renderAll();
         }
-    }
-
-    // --- Metering Functions ---
-    
-    function toggleMeteringMode() {
-        const btn = document.getElementById('metering-button');
-        isMeteringMode = !isMeteringMode;
-        if (isMeteringMode) {
-            btn.textContent = 'Cancel Metering';
-            btn.classList.add('active');
-            clearMetering();
-            canvas2d.selection = false;
-            canvas2d.forEachObject(o => o.set('evented', false));
-        } else {
-            btn.textContent = 'Start Metering';
-            btn.classList.remove('active');
-            clearMetering();
-            canvas2d.selection = true;
-            canvas2d.forEachObject(o => o.set('evented', true));
-        }
-    }
-
-    function clearMetering() {
-        canvas2d.remove(...meteringObjects);
-        meteringObjects = [];
-        meteringPoints = [];
-        canvas2d.requestRenderAll();
-    }
-
-    function handleMouseDown(opt) {
-        if (!isMeteringMode) return;
-        const pointer = canvas2d.getPointer(opt.e);
-        if (meteringPoints.length > 2) {
-            const startPoint = meteringPoints[0];
-            const dist = Math.sqrt(Math.pow(startPoint.x - pointer.x, 2) + Math.pow(startPoint.y - pointer.y, 2));
-            if (dist < 10) {
-                drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
-                calculateAndShowArea();
-                isMeteringMode = false; 
-                return;
-            }
-        }
-        meteringPoints.push(pointer);
-        const circle = new fabric.Circle({ radius: 3, fill: 'red', left: pointer.x, top: pointer.y, originX: 'center', originY: 'center', isMeteringObject: true });
-        meteringObjects.push(circle);
-        canvas2d.add(circle);
-        if (meteringPoints.length > 1) {
-            drawMeteringLine(meteringPoints[meteringPoints.length - 2], pointer);
-        }
-    }
-
-    function drawMeteringLine(p1, p2) {
-        const line = new fabric.Line([p1.x, p1.y, p2.x, p2.y], { stroke: 'red', strokeWidth: 2, selectable: false, evented: false, isMeteringObject: true });
-        meteringObjects.push(line);
-        canvas2d.add(line);
-        const lengthPx = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        const lengthMM = lengthPx / scale;
-        const text = new fabric.Text(`${Math.round(lengthMM)} mm`, { left: (p1.x + p2.x) / 2, top: (p1.y + p2.y) / 2, fontSize: 14, fill: 'black', originX: 'center', originY: 'center', isMeteringObject: true, textBaseline: 'middle' });
-        meteringObjects.push(text);
-        canvas2d.add(text);
-    }
-    
-    function calculateAndShowArea() {
-        let areaPx = 0;
-        for (let i = 0; i < meteringPoints.length; i++) {
-            const p1 = meteringPoints[i];
-            const p2 = meteringPoints[(i + 1) % meteringPoints.length];
-            areaPx += (p1.x * p2.y - p2.x * p1.y);
-        }
-        areaPx = Math.abs(areaPx) / 2;
-        const mPerPx = 1 / scale / 1000;
-        const areaM2 = areaPx * mPerPx * mPerPx;
-        let centroid = { x: 0, y: 0 };
-        meteringPoints.forEach(p => { centroid.x += p.x; centroid.y += p.y; });
-        centroid.x /= meteringPoints.length;
-        centroid.y /= meteringPoints.length;
-        const areaText = new fabric.Text(`${areaM2.toFixed(2)} m²`, { left: centroid.x, top: centroid.y, fontSize: 16, fill: 'blue', fontWeight: 'bold', originX: 'center', originY: 'center', isMeteringObject: true, textBaseline: 'middle' });
-        meteringObjects.push(areaText);
-        canvas2d.add(areaText);
     }
 
     // Initial setup
