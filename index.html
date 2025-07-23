@@ -165,7 +165,7 @@
 
 <div id="info-modal">
     <div class="info-content">
-        <span class="close-button">×</span>
+        <span class="close-button">&times;</span>
         <h2>Controls Guide</h2>
         <h3>2D Mode</h3>
         <ul>
@@ -173,6 +173,7 @@
             <li><b>Zoom:</b> Mouse Wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Select/Move/Rotate:</b> Click and drag objects. Use rotation handles.</li>
             <li><b>Multi-Select:</b> Hold <kbd>Shift</kbd> and click multiple objects.</li>
+            <li><b>Delete Object:</b> Select an object and press <kbd>Delete</kbd> or <kbd>Backspace</kbd>.</li>
             <li><b>Draw Walls:</b> Activate drawing mode, then click on the canvas to place wall corners. Press <kbd>Esc</kbd> or click the button again to finish.</li>
             <li><b>Metering:</b> Activate metering mode, then click on the canvas to draw a measuring line. Click near the start point to close the loop and calculate area.</li>
         </ul>
@@ -183,7 +184,7 @@
             <li><b>Zoom:</b> Use the mouse wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Move Camera (Walk):</b> <kbd>W</kbd> (forward), <kbd>A</kbd> (left), <kbd>S</kbd> (back), <kbd>D</kbd> (right).</li>
             <li><b>Move Camera (Strafe):</b> <kbd>I</kbd> (forward), <kbd>K</kbd> (back), <kbd>J</kbd> (left), <kbd>L</kbd> (right).</li>
-            <li><b>Move Camera (Vertical):</b> <kbd>↑</kbd> (up), <kbd>↓</kbd> (down).</li>
+            <li><b>Move Camera (Vertical):</b> <kbd>&uarr;</kbd> (up), <kbd>&darr;</kbd> (down).</li>
         </ul>
     </div>
 </div>
@@ -353,6 +354,11 @@
         if (key === 'escape') {
             if (isDrawingWallsMode) toggleDrawWallsMode();
             if (isMeteringMode) toggleMeteringMode();
+        }
+
+        if (key === 'backspace' || key === 'delete') {
+            e.preventDefault(); // Prevent browser back navigation on backspace
+            removeSelectedObject();
         }
 
         if (key === 'r' || key === 'f') {
