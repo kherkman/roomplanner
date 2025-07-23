@@ -34,10 +34,10 @@
             margin-top: 10px;
         }
         #menu button:hover { background-color: #0056b3; }
-        #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active { background-color: #dc3545; }
-        #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover { background-color: #c82333; }
-        #menu #load-button, #menu #save-screenshot-button { background-color: #28a745; }
-        #menu #load-button:hover, #menu #save-screenshot-button:hover { background-color: #218838; }
+        #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active, #menu #remove-texture-button, #menu #remove-floor-texture-button { background-color: #dc3545; }
+        #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover, #menu #remove-texture-button:hover, #menu #remove-floor-texture-button:hover { background-color: #c82333; }
+        #menu #load-button, #menu #save-screenshot-button, #menu #apply-texture-button, #menu #apply-floor-texture-button { background-color: #28a745; }
+        #menu #load-button:hover, #menu #save-screenshot-button:hover, #menu #apply-texture-button:hover, #menu #apply-floor-texture-button:hover { background-color: #218838; }
         #menu #info-button { background-color: #17a2b8; }
         #menu #info-button:hover { background-color: #138496; }
 
@@ -119,6 +119,9 @@
     <div id="selected-object-controls" class="control-section" style="display: none;">
         <hr><h3>Selected Object</h3>
         <button id="remove-object">Remove Selected</button>
+        <button id="apply-texture-button" onclick="document.getElementById('texture-file-input').click()">Apply Texture</button>
+        <button id="remove-texture-button">Remove Texture</button>
+        <input type="file" id="texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
         <!-- Wall-specific controls -->
         <div id="wall-editor-controls" style="display: none;">
             <div class="input-group">
@@ -151,6 +154,9 @@
             <label for="floor-color">Floor Color:</label>
             <input type="color" id="floor-color" value="#808080">
         </div>
+        <button id="apply-floor-texture-button" onclick="document.getElementById('floor-texture-file-input').click()">Apply Floor Texture</button>
+        <button id="remove-floor-texture-button">Remove Floor Texture</button>
+        <input type="file" id="floor-texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
         <div class="input-group">
             <label for="wall-height">Default Wall Height (mm):</label>
             <input type="number" id="wall-height" value="2400">
@@ -165,7 +171,7 @@
 
 <div id="info-modal">
     <div class="info-content">
-        <span class="close-button">&times;</span>
+        <span class="close-button">×</span>
         <h2>Controls Guide</h2>
         <h3>2D Mode</h3>
         <ul>
@@ -184,7 +190,7 @@
             <li><b>Zoom:</b> Use the mouse wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Move Camera (Walk):</b> <kbd>W</kbd> (forward), <kbd>A</kbd> (left), <kbd>S</kbd> (back), <kbd>D</kbd> (right).</li>
             <li><b>Move Camera (Strafe):</b> <kbd>I</kbd> (forward), <kbd>K</kbd> (back), <kbd>J</kbd> (left), <kbd>L</kbd> (right).</li>
-            <li><b>Move Camera (Vertical):</b> <kbd>&uarr;</kbd> (up), <kbd>&darr;</kbd> (down).</li>
+            <li><b>Move Camera (Vertical):</b> <kbd>↑</kbd> (up), <kbd>↓</kbd> (down).</li>
         </ul>
     </div>
 </div>
@@ -208,7 +214,7 @@
         preserveObjectStacking: true,
         renderOnAddRemove: false
     });
-    const customProps = ['isWall', 'isItem', 'itemProps', 'uid', 'color3d'];
+    const customProps = ['isWall', 'isItem', 'itemProps', 'uid', 'color3d', 'textureURL'];
     let lengthTextObjects = {};
 
     // --- Mode States ---
@@ -226,6 +232,7 @@
     let sceneObjects3D = {};
     const canvas3d = document.getElementById('canvas-3d');
     let is3DMode = false;
+    let floorTextureURL = null;
     
     // --- Event Listeners ---
     document.addEventListener('keydown', (e) => {
@@ -239,6 +246,10 @@
     
     document.getElementById('save-button').addEventListener('click', saveToFile);
     document.getElementById('file-input').addEventListener('change', loadFromFile);
+    document.getElementById('texture-file-input').addEventListener('change', applyTexture);
+    document.getElementById('remove-texture-button').addEventListener('click', removeObjectTexture);
+    document.getElementById('floor-texture-file-input').addEventListener('change', applyFloorTexture);
+    document.getElementById('remove-floor-texture-button').addEventListener('click', removeFloorTexture);
     document.getElementById('save-screenshot-button').addEventListener('click', saveScreenshot);
     document.getElementById('info-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'block');
     document.querySelector('.close-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'none');
@@ -303,6 +314,8 @@
         const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject && !o.isWallPoint);
         const json = canvas2d.toObject(customProps);
         json.objects = originalObjects.map(o => o.toObject(customProps));
+        json.floorTextureURL = floorTextureURL;
+        
         const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(json, null, 2))}`;
         const a = document.createElement('a');
         a.href = dataStr;
@@ -336,18 +349,84 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (f) => {
-            canvas2d.loadFromJSON(f.target.result, () => {
+            const data = JSON.parse(f.target.result);
+            
+            floorTextureURL = data.floorTextureURL || null;
+
+            canvas2d.loadFromJSON(data, () => {
                 canvas2d.getObjects().forEach(obj => {
                     if (obj.uid === undefined) obj.uid = ++uidCounter;
                 });
                 updateAllLengthTexts();
                 canvas2d.requestRenderAll();
+
+                if (is3DMode) {
+                    update3DScene();
+                }
             });
         };
         reader.readAsText(file);
         e.target.value = '';
     }
     
+    function applyTexture(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            const dataURL = f.target.result;
+            const activeObjects = canvas2d.getActiveObjects();
+
+            if (activeObjects.length === 0) return;
+            
+            activeObjects.forEach(obj => {
+                obj.textureURL = dataURL;
+            });
+
+            if (is3DMode) {
+                update3DScene();
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    }
+
+    function removeObjectTexture() {
+        const activeObjects = canvas2d.getActiveObjects();
+        if (activeObjects.length === 0) return;
+
+        activeObjects.forEach(obj => {
+            obj.textureURL = null;
+        });
+
+        if (is3DMode) {
+            update3DScene();
+        }
+    }
+    
+    function applyFloorTexture(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            floorTextureURL = f.target.result;
+            if (is3DMode) {
+                update3DScene();
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    }
+
+    function removeFloorTexture() {
+        floorTextureURL = null;
+        if (is3DMode) {
+            update3DScene();
+        }
+    }
+
     function handleGlobalKeys(e) {
         const key = e.key.toLowerCase();
         
@@ -819,22 +898,55 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
         dirLight.position.set(150, 200, 100);
         scene.add(dirLight);
+        
+        // Create floor
         const floorGeometry = new THREE.PlaneGeometry(10000, 10000);
         const floorMaterial = new THREE.MeshStandardMaterial({ color: document.getElementById('floor-color').value });
         floor = new THREE.Mesh(floorGeometry, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
+        
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableKeys = false;
         camera.lookAt(controls.target);
+
+        update3DScene(); // Call once on init to set initial textures/colors
     }
     
     function update3DScene() {
-        Object.values(sceneObjects3D).forEach(obj => scene.remove(obj));
+        // Update floor material
+        if (floor) {
+            if (floorTextureURL) {
+                // Check if the map needs to be created or updated
+                if (!floor.material.map || floor.material.map.image.src !== floorTextureURL) {
+                    const texture = new THREE.TextureLoader().load(floorTextureURL);
+                    texture.wrapS = THREE.RepeatWrapping;
+                    texture.wrapT = THREE.RepeatWrapping;
+                    texture.repeat.set(20, 20);
+                    floor.material.map = texture;
+                    floor.material.color.set(0xffffff); // Use white so texture is not tinted
+                    floor.material.needsUpdate = true;
+                }
+            } else { // If no texture, use color
+                if (floor.material.map) { // Remove texture if it exists
+                    floor.material.map.dispose();
+                    floor.material.map = null;
+                }
+                floor.material.color.set(document.getElementById('floor-color').value);
+                floor.material.needsUpdate = true;
+            }
+        }
+
+        // Update walls and items
+        Object.values(sceneObjects3D).forEach(mesh => {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            if(mesh.material.map) mesh.material.map.dispose();
+            mesh.material.dispose();
+        });
         sceneObjects3D = {};
         const wallHeight = document.getElementById('wall-height').value * scale;
         const defaultWallColor = '#ffffff'; 
-        if(floor) floor.material.color.set(document.getElementById('floor-color').value);
 
         canvas2d.getObjects().forEach(obj2d => {
             if(obj2d.isLengthText || obj2d.isMeteringObject) return;
@@ -846,10 +958,22 @@
     function create3DWall(wall2d, wallHeight, defaultColor) {
         const d = fabric.util.qrDecompose(wall2d.calcTransformMatrix());
         const geometry = new THREE.BoxGeometry(wall2d.getScaledWidth(), wallHeight, wall2d.getScaledHeight());
-        const color = wall2d.color3d || defaultColor;
-        const material = new THREE.MeshStandardMaterial({ color: color });
+        let material;
+
+        if (wall2d.textureURL) {
+            const texture = new THREE.TextureLoader().load(wall2d.textureURL);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            const wallLengthMM = wall2d.getScaledWidth() / scale;
+            const wallHeightMM = wallHeight / scale;
+            texture.repeat.set(wallLengthMM / 1000, wallHeightMM / 1000); // Repeat every meter
+            material = new THREE.MeshStandardMaterial({ map: texture });
+        } else {
+            const color = wall2d.color3d || defaultColor;
+            material = new THREE.MeshStandardMaterial({ color: color });
+        }
+
         const wall3d = new THREE.Mesh(geometry, material);
-        
         wall3d.position.set(d.translateX - canvas2d.width / 2, wallHeight / 2, d.translateY - canvas2d.height / 2);
         wall3d.rotation.y = -fabric.util.degreesToRadians(d.angle);
         sceneObjects3D[wall2d.uid] = wall3d;
@@ -858,9 +982,20 @@
     
     function create3DItem(item2d) {
         const props = item2d.itemProps;
-        const color = props.color;
         const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
-        const material = new THREE.MeshStandardMaterial({ color: color });
+        let material;
+
+        if (item2d.textureURL) {
+            const texture = new THREE.TextureLoader().load(item2d.textureURL);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(props.width / 1000, props.height / 1000); // Repeat every meter on front face
+            material = new THREE.MeshStandardMaterial({ map: texture });
+        } else {
+            const color = props.color || (item2d.fill);
+            material = new THREE.MeshStandardMaterial({ color: color });
+        }
+
         const item3d = new THREE.Mesh(geometry, material);
         const center = item2d.getCenterPoint();
         item3d.position.set(
