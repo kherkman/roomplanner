@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>2D/3D Wall Planner</title>
+    <title>2D/3D Room Planner</title>
     <style>
         body {
             font-family: sans-serif;
@@ -34,10 +34,10 @@
             margin-top: 10px;
         }
         #menu button:hover { background-color: #0056b3; }
-        #menu .control-section button, #menu #metering-button.active { background-color: #dc3545; }
-        #menu .control-section button:hover, #menu #metering-button.active:hover { background-color: #c82333; }
-        #menu #load-button { background-color: #28a745; }
-        #menu #load-button:hover { background-color: #218838; }
+        #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active { background-color: #dc3545; }
+        #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover { background-color: #c82333; }
+        #menu #load-button, #menu #save-screenshot-button { background-color: #28a745; }
+        #menu #load-button:hover, #menu #save-screenshot-button:hover { background-color: #218838; }
         #menu #info-button { background-color: #17a2b8; }
         #menu #info-button:hover { background-color: #138496; }
 
@@ -100,6 +100,7 @@
     <button id="save-button">Save to File</button>
     <button id="load-button" onclick="document.getElementById('file-input').click()">Load from File</button>
     <input type="file" id="file-input" style="display: none;" accept=".json">
+    <button id="save-screenshot-button">Save Screenshot (JPG)</button>
     <hr>
     <h3>Insert</h3>
     <div class="input-group">
@@ -107,6 +108,7 @@
         <input type="number" id="wall-length" value="4000">
     </div>
     <button id="insert-wall">Insert Wall</button>
+    <button id="draw-walls-button">Draw Walls</button>
     <button id="insert-item">Insert Item (Cube)</button>
     <hr>
     <h3>Controls</h3>
@@ -163,7 +165,7 @@
 
 <div id="info-modal">
     <div class="info-content">
-        <span class="close-button">&times;</span>
+        <span class="close-button">×</span>
         <h2>Controls Guide</h2>
         <h3>2D Mode</h3>
         <ul>
@@ -171,6 +173,7 @@
             <li><b>Zoom:</b> Mouse Wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Select/Move/Rotate:</b> Click and drag objects. Use rotation handles.</li>
             <li><b>Multi-Select:</b> Hold <kbd>Shift</kbd> and click multiple objects.</li>
+            <li><b>Draw Walls:</b> Activate drawing mode, then click on the canvas to place wall corners. Press <kbd>Esc</kbd> or click the button again to finish.</li>
             <li><b>Metering:</b> Activate metering mode, then click on the canvas to draw a measuring line. Click near the start point to close the loop and calculate area.</li>
         </ul>
         <h3>3D Mode</h3>
@@ -180,7 +183,7 @@
             <li><b>Zoom:</b> Use the mouse wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Move Camera (Walk):</b> <kbd>W</kbd> (forward), <kbd>A</kbd> (left), <kbd>S</kbd> (back), <kbd>D</kbd> (right).</li>
             <li><b>Move Camera (Strafe):</b> <kbd>I</kbd> (forward), <kbd>K</kbd> (back), <kbd>J</kbd> (left), <kbd>L</kbd> (right).</li>
-            <li><b>Move Camera (Vertical):</b> <kbd>&uarr;</kbd> (up), <kbd>&darr;</kbd> (down).</li>
+            <li><b>Move Camera (Vertical):</b> <kbd>↑</kbd> (up), <kbd>↓</kbd> (down).</li>
         </ul>
     </div>
 </div>
@@ -207,11 +210,15 @@
     const customProps = ['isWall', 'isItem', 'itemProps', 'uid', 'color3d'];
     let lengthTextObjects = {};
 
-    // --- Metering State ---
+    // --- Mode States ---
     let isMeteringMode = false;
     let meteringPoints = [];
     let meteringObjects = [];
     
+    let isDrawingWallsMode = false;
+    let wallDrawingPoints = [];
+    let previewLine = null;
+
     // --- 3D Scene ---
     let scene, camera, renderer, controls;
     let floor;
@@ -231,11 +238,13 @@
     
     document.getElementById('save-button').addEventListener('click', saveToFile);
     document.getElementById('file-input').addEventListener('change', loadFromFile);
+    document.getElementById('save-screenshot-button').addEventListener('click', saveScreenshot);
     document.getElementById('info-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'block');
     document.querySelector('.close-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'none');
     window.addEventListener('click', (e) => { if (e.target == document.getElementById('info-modal')) e.target.style.display = 'none'; });
     
     document.getElementById('insert-wall').addEventListener('click', insertWall);
+    document.getElementById('draw-walls-button').addEventListener('click', toggleDrawWallsMode);
     document.getElementById('insert-item').addEventListener('click', insertItem);
     document.getElementById('remove-object').addEventListener('click', removeSelectedObject);
     document.getElementById('toggle-lengths').addEventListener('click', toggleLengthVisibility);
@@ -261,6 +270,7 @@
     canvas2d.on({
         'mouse:wheel': handle2DZoom,
         'mouse:down': handleMouseDown,
+        'mouse:move': handleMouseMove,
         'selection:created': updateMenu,
         'selection:updated': updateMenu,
         'selection:cleared': updateMenu,
@@ -289,13 +299,32 @@
     }
 
     function saveToFile() {
-        const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject);
+        const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject && !o.isWallPoint);
         const json = canvas2d.toObject(customProps);
         json.objects = originalObjects.map(o => o.toObject(customProps));
         const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(json, null, 2))}`;
         const a = document.createElement('a');
         a.href = dataStr;
         a.download = "plan.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
+    function saveScreenshot() {
+        let dataUrl;
+        if (is3DMode) {
+            renderer.render(scene, camera); // Ensure scene is rendered before capture
+            dataUrl = renderer.domElement.toDataURL('image/jpeg');
+        } else {
+            dataUrl = canvas2d.toDataURL({
+                format: 'jpeg',
+                quality: 0.9
+            });
+        }
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = "screenshot.jpg";
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -320,6 +349,12 @@
     
     function handleGlobalKeys(e) {
         const key = e.key.toLowerCase();
+        
+        if (key === 'escape') {
+            if (isDrawingWallsMode) toggleDrawWallsMode();
+            if (isMeteringMode) toggleMeteringMode();
+        }
+
         if (key === 'r' || key === 'f') {
             e.preventDefault();
             const zoomFactor = 1.1;
@@ -335,7 +370,7 @@
     }
 
     function handle2DZoom(opt) {
-        if (isMeteringMode) return;
+        if (isMeteringMode || isDrawingWallsMode) return;
         opt.e.preventDefault();
         opt.e.stopPropagation();
         const delta = opt.e.deltaY;
@@ -387,7 +422,7 @@
         const length = document.getElementById('wall-length').value;
         const wall = new fabric.Rect({
             width: length * scale, height: 10, fill: 'black', left: 50, top: 50,
-            originX: 'left', originY: 'top', isWall: true, uid: ++uidCounter
+            originX: 'left', originY: 'center', isWall: true, uid: ++uidCounter
         });
         canvas2d.add(wall);
 
@@ -409,7 +444,7 @@
     }
 
     function updateMenu(e) {
-        if (isMeteringMode) return;
+        if (isMeteringMode || isDrawingWallsMode) return;
         document.getElementById('selected-object-controls').style.display = 'none';
         document.getElementById('wall-editor-controls').style.display = 'none';
         document.getElementById('item-editor-controls').style.display = 'none';
@@ -563,24 +598,75 @@
             canvas3d.style.display = 'none';
         }
     }
+    
+    // --- Interaction Mode Toggles ---
 
+    function setCanvasInteraction(enabled) {
+        canvas2d.selection = enabled;
+        canvas2d.forEachObject(o => o.set('evented', enabled));
+    }
+
+    // --- Wall Drawing Functions ---
+    
+    function toggleDrawWallsMode() {
+        const btn = document.getElementById('draw-walls-button');
+        isDrawingWallsMode = !isDrawingWallsMode;
+        
+        if (isDrawingWallsMode) {
+            if(isMeteringMode) toggleMeteringMode(); // Turn off other modes
+            btn.textContent = 'Finish Drawing';
+            btn.classList.add('active');
+            setCanvasInteraction(false);
+        } else {
+            btn.textContent = 'Draw Walls';
+            btn.classList.remove('active');
+            setCanvasInteraction(true);
+            wallDrawingPoints = [];
+            if(previewLine) canvas2d.remove(previewLine);
+            previewLine = null;
+            canvas2d.requestRenderAll();
+        }
+    }
+
+    function createWallSegment(p1, p2) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = fabric.util.radiansToDegrees(Math.atan2(dy, dx));
+
+        const wall = new fabric.Rect({
+            left: p1.x,
+            top: p1.y,
+            width: length,
+            height: 10,
+            angle: angle,
+            fill: 'black',
+            originX: 'left',
+            originY: 'center',
+            isWall: true,
+            uid: ++uidCounter
+        });
+
+        canvas2d.add(wall);
+        updateLengthTextFor(wall);
+    }
+    
     // --- Metering Functions ---
     
     function toggleMeteringMode() {
         const btn = document.getElementById('metering-button');
         isMeteringMode = !isMeteringMode;
         if (isMeteringMode) {
+            if(isDrawingWallsMode) toggleDrawWallsMode(); // Turn off other modes
             btn.textContent = 'Cancel Metering';
             btn.classList.add('active');
             clearMetering(); // Clear any previous measurement
-            canvas2d.selection = false;
-            canvas2d.forEachObject(o => o.set('evented', false));
+            setCanvasInteraction(false);
         } else {
             btn.textContent = 'Start Metering';
             btn.classList.remove('active');
             clearMetering();
-            canvas2d.selection = true;
-            canvas2d.forEachObject(o => o.set('evented', true));
+            setCanvasInteraction(true);
         }
     }
 
@@ -591,7 +677,40 @@
         canvas2d.requestRenderAll();
     }
 
+    function handleMouseMove(opt) {
+        if (!isDrawingWallsMode || wallDrawingPoints.length === 0) return;
+
+        if (previewLine) {
+            canvas2d.remove(previewLine);
+        }
+
+        const pointer = canvas2d.getPointer(opt.e);
+        const startPoint = wallDrawingPoints[wallDrawingPoints.length - 1];
+        
+        previewLine = new fabric.Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
+            stroke: 'rgba(0,0,0,0.3)',
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+            strokeDashArray: [5, 5]
+        });
+        canvas2d.add(previewLine);
+        canvas2d.requestRenderAll();
+    }
+
     function handleMouseDown(opt) {
+        if(isDrawingWallsMode) {
+            const pointer = canvas2d.getPointer(opt.e);
+            wallDrawingPoints.push(pointer);
+
+            if (wallDrawingPoints.length > 1) {
+                const startPoint = wallDrawingPoints[wallDrawingPoints.length - 2];
+                const endPoint = wallDrawingPoints[wallDrawingPoints.length - 1];
+                createWallSegment(startPoint, endPoint);
+            }
+            return;
+        }
+
         if (!isMeteringMode) return;
         const pointer = canvas2d.getPointer(opt.e);
 
@@ -602,8 +721,7 @@
             if (dist < 10) { // Close loop if click is near start point
                 drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
                 calculateAndShowArea();
-                // End metering session, requires user to click cancel/start to do another
-                isMeteringMode = false; 
+                isMeteringMode = false; // End metering session
                 return;
             }
         }
@@ -688,7 +806,7 @@
         scene.background = new THREE.Color(0x000000);
         camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 1, 20000);
         camera.position.set(500, 800, 1300);
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
         renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
         canvas3d.appendChild(renderer.domElement);
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -758,7 +876,10 @@
             renderer.render(scene, camera);
         } else {
             handle2DPan();
-            canvas2d.renderAll();
+            // renderAll is called by handleMouseMove when drawing, so we avoid redundant calls
+            if(!isDrawingWallsMode) {
+                canvas2d.renderAll();
+            }
         }
     }
 
