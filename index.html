@@ -34,8 +34,8 @@
             margin-top: 10px;
         }
         #menu button:hover { background-color: #0056b3; }
-        #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active, #menu #remove-texture-button, #menu #remove-floor-texture-button { background-color: #dc3545; }
-        #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover, #menu #remove-texture-button:hover, #menu #remove-floor-texture-button:hover { background-color: #c82333; }
+        #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active { background-color: #dc3545; }
+        #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover { background-color: #c82333; }
         #menu #load-button, #menu #save-screenshot-button, #menu #apply-texture-button, #menu #apply-floor-texture-button { background-color: #28a745; }
         #menu #load-button:hover, #menu #save-screenshot-button:hover, #menu #apply-texture-button:hover, #menu #apply-floor-texture-button:hover { background-color: #218838; }
         #menu #info-button { background-color: #17a2b8; }
@@ -110,6 +110,8 @@
     <button id="insert-wall">Insert Wall</button>
     <button id="draw-walls-button">Draw Walls</button>
     <button id="insert-item">Insert Item (Cube)</button>
+    <button id="insert-hole">Insert Hole</button>
+    <button id="insert-door">Insert Door</button>
     <hr>
     <h3>Controls</h3>
     <button id="metering-button">Start Metering</button>
@@ -120,7 +122,6 @@
         <hr><h3>Selected Object</h3>
         <button id="remove-object">Remove Selected</button>
         <button id="apply-texture-button" onclick="document.getElementById('texture-file-input').click()">Apply Texture</button>
-        <button id="remove-texture-button">Remove Texture</button>
         <input type="file" id="texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
         <!-- Wall-specific controls -->
         <div id="wall-editor-controls" style="display: none;">
@@ -140,6 +141,19 @@
             <div class="input-group"><label for="item-height">Height (mm):</label><input type="number" id="item-height"></div>
             <div class="input-group"><label for="item-y-position">Vertical Position (mm):</label><input type="number" id="item-y-position"></div>
         </div>
+        <!-- Hole-specific controls -->
+        <div id="hole-editor-controls" style="display: none;">
+            <div class="input-group"><label for="hole-width">Width (mm):</label><input type="number" id="hole-width"></div>
+            <div class="input-group"><label for="hole-height">Height (mm):</label><input type="number" id="hole-height"></div>
+            <div class="input-group"><label for="hole-y-position">Vertical Position (mm):</label><input type="number" id="hole-y-position"></div>
+        </div>
+         <!-- Door-specific controls -->
+        <div id="door-editor-controls" style="display: none;">
+            <div class="input-group"><label for="door-width">Width (mm):</label><input type="number" id="door-width"></div>
+            <div class="input-group"><label for="door-height">Height (mm):</label><input type="number" id="door-height"></div>
+            <div class="input-group"><label for="door-color">Color:</label><input type="color" id="door-color"></div>
+            <button id="mirror-door-button">Mirror Swing</button>
+        </div>
     </div>
     
     <hr>
@@ -155,7 +169,6 @@
             <input type="color" id="floor-color" value="#808080">
         </div>
         <button id="apply-floor-texture-button" onclick="document.getElementById('floor-texture-file-input').click()">Apply Floor Texture</button>
-        <button id="remove-floor-texture-button">Remove Floor Texture</button>
         <input type="file" id="floor-texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
         <div class="input-group">
             <label for="wall-height">Default Wall Height (mm):</label>
@@ -171,7 +184,7 @@
 
 <div id="info-modal">
     <div class="info-content">
-        <span class="close-button">×</span>
+        <span class="close-button">&times;</span>
         <h2>Controls Guide</h2>
         <h3>2D Mode</h3>
         <ul>
@@ -190,7 +203,8 @@
             <li><b>Zoom:</b> Use the mouse wheel, or <kbd>R</kbd> / <kbd>F</kbd> keys.</li>
             <li><b>Move Camera (Walk):</b> <kbd>W</kbd> (forward), <kbd>A</kbd> (left), <kbd>S</kbd> (back), <kbd>D</kbd> (right).</li>
             <li><b>Move Camera (Strafe):</b> <kbd>I</kbd> (forward), <kbd>K</kbd> (back), <kbd>J</kbd> (left), <kbd>L</kbd> (right).</li>
-            <li><b>Move Camera (Vertical):</b> <kbd>↑</kbd> (up), <kbd>↓</kbd> (down).</li>
+            <li><b>Move Camera (Vertical):</b> <kbd>&uarr;</kbd> (up), <kbd>&darr;</kbd> (down).</li>
+            <li><b>Open/Close Door:</b> Press <kbd>E</kbd> when near a door.</li>
         </ul>
     </div>
 </div>
@@ -214,7 +228,7 @@
         preserveObjectStacking: true,
         renderOnAddRemove: false
     });
-    const customProps = ['isWall', 'isItem', 'itemProps', 'uid', 'color3d', 'textureURL'];
+    const customProps = ['isWall', 'isItem', 'itemProps', 'isHole', 'holeProps', 'isDoor', 'doorProps', 'uid', 'color3d', 'textureURL'];
     let lengthTextObjects = {};
 
     // --- Mode States ---
@@ -230,6 +244,7 @@
     let scene, camera, renderer, controls;
     let floor;
     let sceneObjects3D = {};
+    const clock = new THREE.Clock();
     const canvas3d = document.getElementById('canvas-3d');
     let is3DMode = false;
     let floorTextureURL = null;
@@ -247,9 +262,7 @@
     document.getElementById('save-button').addEventListener('click', saveToFile);
     document.getElementById('file-input').addEventListener('change', loadFromFile);
     document.getElementById('texture-file-input').addEventListener('change', applyTexture);
-    document.getElementById('remove-texture-button').addEventListener('click', removeObjectTexture);
     document.getElementById('floor-texture-file-input').addEventListener('change', applyFloorTexture);
-    document.getElementById('remove-floor-texture-button').addEventListener('click', removeFloorTexture);
     document.getElementById('save-screenshot-button').addEventListener('click', saveScreenshot);
     document.getElementById('info-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'block');
     document.querySelector('.close-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'none');
@@ -258,6 +271,9 @@
     document.getElementById('insert-wall').addEventListener('click', insertWall);
     document.getElementById('draw-walls-button').addEventListener('click', toggleDrawWallsMode);
     document.getElementById('insert-item').addEventListener('click', insertItem);
+    document.getElementById('insert-hole').addEventListener('click', insertHole);
+    document.getElementById('insert-door').addEventListener('click', insertDoor);
+    document.getElementById('mirror-door-button').addEventListener('click', mirrorDoor);
     document.getElementById('remove-object').addEventListener('click', removeSelectedObject);
     document.getElementById('toggle-lengths').addEventListener('click', toggleLengthVisibility);
     document.getElementById('toggle-3d').addEventListener('click', toggle3DMode);
@@ -270,6 +286,13 @@
     ['item-width', 'item-depth', 'item-height', 'item-y-position'].forEach(id => {
         document.getElementById(id).addEventListener('input', updateItemFromMenu);
     });
+    ['hole-width', 'hole-height', 'hole-y-position'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateHoleFromMenu);
+    });
+    ['door-width', 'door-height', 'door-color'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateDoorFromMenu);
+    });
+
 
     window.addEventListener('resize', onWindowResize);
     
@@ -286,10 +309,24 @@
         'selection:created': updateMenu,
         'selection:updated': updateMenu,
         'selection:cleared': updateMenu,
-        'object:modified': (e) => updateMenu(e),
-        'object:moving': (e) => updateTextForObject(e.target),
-        'object:rotating': (e) => updateTextForObject(e.target),
-        'object:scaling': (e) => updateTextForObject(e.target)
+        'object:modified': (e) => {
+            updateMenu(e);
+            if(is3DMode) update3DScene();
+        },
+        'object:moving': (e) => {
+            updateTextForObject(e.target);
+            if (is3DMode && (e.target.isHole || e.target.isWall || e.target.isDoor)) {
+                 update3DScene();
+            }
+        },
+        'object:rotating': (e) => {
+             updateTextForObject(e.target);
+             if (is3DMode) update3DScene();
+        },
+        'object:scaling': (e) => {
+            updateTextForObject(e.target)
+            if (is3DMode) update3DScene();
+        }
     });
 
     // --- Core Functions ---
@@ -308,6 +345,7 @@
         });
         canvas2d.discardActiveObject();
         canvas2d.requestRenderAll();
+        if (is3DMode) update3DScene(); 
     }
 
     function saveToFile() {
@@ -328,7 +366,7 @@
     function saveScreenshot() {
         let dataUrl;
         if (is3DMode) {
-            renderer.render(scene, camera); // Ensure scene is rendered before capture
+            renderer.render(scene, camera);
             dataUrl = renderer.domElement.toDataURL('image/jpeg');
         } else {
             dataUrl = canvas2d.toDataURL({
@@ -350,13 +388,24 @@
         const reader = new FileReader();
         reader.onload = (f) => {
             const data = JSON.parse(f.target.result);
-            
             floorTextureURL = data.floorTextureURL || null;
 
             canvas2d.loadFromJSON(data, () => {
+                const objectsToLoad = [];
                 canvas2d.getObjects().forEach(obj => {
-                    if (obj.uid === undefined) obj.uid = ++uidCounter;
+                    if(obj.isDoor) {
+                        const doorGroup = createDoorGroup(obj.doorProps);
+                        doorGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, uid: obj.uid, textureURL: obj.textureURL, scaleY: obj.doorProps.swingDirection || 1 });
+                        objectsToLoad.push(doorGroup);
+                    } else {
+                        if (obj.uid === undefined) obj.uid = ++uidCounter;
+                        objectsToLoad.push(obj);
+                    }
                 });
+                
+                canvas2d.clear();
+                objectsToLoad.forEach(obj => canvas2d.add(obj));
+
                 updateAllLengthTexts();
                 canvas2d.requestRenderAll();
 
@@ -377,69 +426,49 @@
         reader.onload = (f) => {
             const dataURL = f.target.result;
             const activeObjects = canvas2d.getActiveObjects();
-
             if (activeObjects.length === 0) return;
-            
             activeObjects.forEach(obj => {
                 obj.textureURL = dataURL;
+                 if (obj.isDoor) {
+                    obj.doorProps.textureURL = dataURL;
+                }
             });
-
-            if (is3DMode) {
-                update3DScene();
-            }
+            if (is3DMode) update3DScene();
         };
         reader.readAsDataURL(file);
         e.target.value = '';
-    }
-
-    function removeObjectTexture() {
-        const activeObjects = canvas2d.getActiveObjects();
-        if (activeObjects.length === 0) return;
-
-        activeObjects.forEach(obj => {
-            obj.textureURL = null;
-        });
-
-        if (is3DMode) {
-            update3DScene();
-        }
     }
     
     function applyFloorTexture(e) {
         const file = e.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (f) => {
             floorTextureURL = f.target.result;
-            if (is3DMode) {
-                update3DScene();
+            if (is3DMode && floor) {
+                const texture = new THREE.TextureLoader().load(floorTextureURL);
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(20, 20);
+                floor.material.map = texture;
+                floor.material.color.set(0xffffff);
+                floor.material.needsUpdate = true;
             }
         };
         reader.readAsDataURL(file);
         e.target.value = '';
     }
 
-    function removeFloorTexture() {
-        floorTextureURL = null;
-        if (is3DMode) {
-            update3DScene();
-        }
-    }
-
     function handleGlobalKeys(e) {
         const key = e.key.toLowerCase();
-        
         if (key === 'escape') {
             if (isDrawingWallsMode) toggleDrawWallsMode();
             if (isMeteringMode) toggleMeteringMode();
         }
-
         if (key === 'backspace' || key === 'delete') {
-            e.preventDefault(); // Prevent browser back navigation on backspace
+            e.preventDefault();
             removeSelectedObject();
         }
-
         if (key === 'r' || key === 'f') {
             e.preventDefault();
             const zoomFactor = 1.1;
@@ -451,6 +480,9 @@
             } else {
                 canvas2d.zoomToPoint(new fabric.Point(canvas2d.width / 2, canvas2d.height / 2), canvas2d.getZoom() * zoom);
             }
+        }
+        if (key === 'e' && is3DMode) {
+            toggleClosestDoor();
         }
     }
 
@@ -487,18 +519,15 @@
         camera.getWorldDirection(forward);
         const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
         const moveDirection = new THREE.Vector3(0,0,0);
-
         if (keyState['w'] || keyState['i']) moveDirection.add(forward);
         if (keyState['s'] || keyState['k']) moveDirection.sub(forward);
         if (keyState['a'] || keyState['j']) moveDirection.sub(right);
         if (keyState['d'] || keyState['l']) moveDirection.add(right);
-        
         if(moveDirection.lengthSq() > 0){
             const finalMove = moveDirection.normalize().multiplyScalar(moveSpeed);
             camera.position.add(finalMove);
             controls.target.add(finalMove);
         }
-
         if (keyState['arrowup']) camera.position.y += moveSpeed;
         if (keyState['arrowdown']) camera.position.y -= moveSpeed;
     }
@@ -510,11 +539,7 @@
             originX: 'left', originY: 'center', isWall: true, uid: ++uidCounter
         });
         canvas2d.add(wall);
-
-        if (showLengths) {
-            updateLengthTextFor(wall);
-        }
-        
+        if (showLengths) updateLengthTextFor(wall);
         canvas2d.requestRenderAll();
     }
 
@@ -528,11 +553,81 @@
         canvas2d.add(item).requestRenderAll();
     }
 
+    function insertHole() {
+        const hole = new fabric.Rect({
+            width: 900 * scale, height: 20 * scale,
+            fill: 'rgba(0, 100, 255, 0.5)', stroke: 'blue', strokeWidth: 1,
+            left: 250, top: 250,
+            isHole: true,
+            holeProps: { width: 900, height: 1200, y: 800 },
+            uid: ++uidCounter
+        });
+        canvas2d.add(hole).requestRenderAll();
+    }
+
+    function createDoorGroup(props) {
+        const width_2d = props.width * scale;
+        const doorSlabThickness = 40 * scale; 
+        
+        const slab = new fabric.Rect({
+            left: 0,
+            top: 0,
+            width: width_2d,
+            height: doorSlabThickness,
+            fill: props.color,
+            stroke: 'black',
+            strokeWidth: 0.5,
+            originX: 'left',
+            originY: 'center',
+        });
+        
+        const arc = new fabric.Path(`M 0 0 A ${width_2d} ${width_2d} 0 0 1 ${width_2d} -${width_2d}`, {
+            fill: '',
+            stroke: 'rgba(0,0,0,0.5)',
+            strokeWidth: 1,
+            strokeDashArray: [3,3],
+            originX: 'left',
+            originY: 'top',
+        });
+
+        const doorGroup = new fabric.Group([slab, arc], {
+            left: 150,
+            top: 250,
+            isDoor: true,
+            doorProps: { ...props },
+            uid: ++uidCounter,
+            subTargetCheck: true, 
+            lockScalingFlip: true,
+            originX: 'left',
+            originY: 'center'
+        });
+        return doorGroup;
+    }
+
+    function insertDoor() {
+        const doorProps = { width: 800, height: 2000, color: '#D2B48C', swingDirection: 1 };
+        const door = createDoorGroup(doorProps);
+        canvas2d.add(door).requestRenderAll();
+    }
+
+    function mirrorDoor() {
+        const door = canvas2d.getActiveObject();
+        if (!door || !door.isDoor) return;
+
+        door.doorProps.swingDirection *= -1;
+        door.scaleY *= -1;
+        
+        door.setCoords();
+        canvas2d.requestRenderAll();
+        if(is3DMode) update3DScene();
+    }
+
     function updateMenu(e) {
-        if (isMeteringMode || isDrawingWallsMode) return;
         document.getElementById('selected-object-controls').style.display = 'none';
         document.getElementById('wall-editor-controls').style.display = 'none';
         document.getElementById('item-editor-controls').style.display = 'none';
+        document.getElementById('hole-editor-controls').style.display = 'none';
+        document.getElementById('door-editor-controls').style.display = 'none';
         
         const activeObjects = canvas2d.getActiveObjects();
         if (activeObjects.length === 0) return;
@@ -547,16 +642,23 @@
                 document.getElementById('edit-wall-angle').value = Math.round(obj.angle);
             } else if (obj.isItem) {
                 document.getElementById('item-editor-controls').style.display = 'block';
-                
-                const currentWidthMM = obj.getScaledWidth() / scale;
-                const currentDepthMM = obj.getScaledHeight() / scale;
-                obj.itemProps.width = currentWidthMM;
-                obj.itemProps.depth = currentDepthMM;
-                
-                document.getElementById('item-width').value = Math.round(currentWidthMM);
-                document.getElementById('item-depth').value = Math.round(currentDepthMM);
+                obj.itemProps.width = obj.getScaledWidth() / scale;
+                obj.itemProps.depth = obj.getScaledHeight() / scale;
+                document.getElementById('item-width').value = Math.round(obj.itemProps.width);
+                document.getElementById('item-depth').value = Math.round(obj.itemProps.depth);
                 document.getElementById('item-height').value = obj.itemProps.height;
                 document.getElementById('item-y-position').value = obj.itemProps.y || 0;
+            } else if (obj.isHole) {
+                document.getElementById('hole-editor-controls').style.display = 'block';
+                obj.holeProps.width = obj.getScaledWidth() / scale;
+                document.getElementById('hole-width').value = Math.round(obj.holeProps.width);
+                document.getElementById('hole-height').value = obj.holeProps.height;
+                document.getElementById('hole-y-position').value = obj.holeProps.y;
+            } else if (obj.isDoor) {
+                document.getElementById('door-editor-controls').style.display = 'block';
+                document.getElementById('door-width').value = obj.doorProps.width;
+                document.getElementById('door-height').value = obj.doorProps.height;
+                document.getElementById('door-color').value = obj.doorProps.color;
             }
         }
     }
@@ -564,18 +666,14 @@
     function updateWallFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isWall) return;
-
-        const newLength = document.getElementById('edit-wall-length').value;
-        const newAngle = document.getElementById('edit-wall-angle').value;
-
         activeObject.set({
-            width: newLength * scale,
-            angle: parseFloat(newAngle)
-        });
-        activeObject.scaleX = 1;
-        activeObject.setCoords();
+            width: document.getElementById('edit-wall-length').value * scale,
+            angle: parseFloat(document.getElementById('edit-wall-angle').value),
+            scaleX: 1
+        }).setCoords();
         canvas2d.requestRenderAll();
         updateTextForObject(activeObject);
+        if(is3DMode) update3DScene();
     }
     
     function update3DColorFromMenu() {
@@ -589,30 +687,57 @@
     function updateItemFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isItem) return;
-        
         const props = activeObject.itemProps;
         props.width = document.getElementById('item-width').value;
         props.depth = document.getElementById('item-depth').value;
         props.height = document.getElementById('item-height').value;
         props.y = parseFloat(document.getElementById('item-y-position').value) || 0;
-
         activeObject.set({
             width: props.width * scale,
             height: props.depth * scale,
-            scaleX: 1,
-            scaleY: 1
+            scaleX: 1, scaleY: 1
         }).setCoords();
-        
         canvas2d.requestRenderAll();
-        
-        if (is3DMode) {
-            const mesh3d = sceneObjects3D[activeObject.uid];
-            if (mesh3d) {
-                mesh3d.geometry.dispose();
-                mesh3d.geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
-                mesh3d.position.y = (props.height * scale) / 2 + (props.y * scale);
-            }
-        }
+        if (is3DMode) update3DScene();
+    }
+
+    function updateHoleFromMenu() {
+        const activeObject = canvas2d.getActiveObject();
+        if (!activeObject || !activeObject.isHole) return;
+        const props = activeObject.holeProps;
+        props.width = parseFloat(document.getElementById('hole-width').value);
+        props.height = parseFloat(document.getElementById('hole-height').value);
+        props.y = parseFloat(document.getElementById('hole-y-position').value);
+        activeObject.set({ width: props.width * scale, scaleX: 1 }).setCoords();
+        canvas2d.requestRenderAll();
+        if (is3DMode) update3DScene();
+    }
+
+    function updateDoorFromMenu() {
+        const oldGroup = canvas2d.getActiveObject();
+        if (!oldGroup || !oldGroup.isDoor) return;
+
+        const newProps = {
+            width: parseFloat(document.getElementById('door-width').value),
+            height: parseFloat(document.getElementById('door-height').value),
+            color: document.getElementById('door-color').value,
+            swingDirection: oldGroup.doorProps.swingDirection
+        };
+
+        const preservedProps = {
+            left: oldGroup.left, top: oldGroup.top, angle: oldGroup.angle,
+            uid: oldGroup.uid, textureURL: oldGroup.textureURL, scaleY: oldGroup.scaleY
+        };
+
+        canvas2d.remove(oldGroup);
+        const newGroup = createDoorGroup(newProps);
+        newGroup.set(preservedProps);
+        newGroup.doorProps.textureURL = preservedProps.textureURL;
+
+        canvas2d.add(newGroup);
+        canvas2d.setActiveObject(newGroup);
+        canvas2d.requestRenderAll();
+        if (is3DMode) update3DScene();
     }
     
     function toggleLengthVisibility() {
@@ -642,19 +767,13 @@
             lengthTextObjects[wall.uid] = textObj;
             canvas2d.add(textObj);
         }
-
         textObj.visible = true;
         textObj.text = `${Math.round(wall.getScaledWidth() / scale)} mm`;
         const d = fabric.util.qrDecompose(wall.calcTransformMatrix());
         const center = new fabric.Point(d.translateX, d.translateY);
         const offset = new fabric.Point(0, -20);
         const rotatedOffset = fabric.util.rotatePoint(offset, new fabric.Point(0,0), fabric.util.degreesToRadians(d.angle));
-        
-        textObj.set({
-            left: center.x + rotatedOffset.x,
-            top: center.y + rotatedOffset.y,
-            angle: d.angle
-        });
+        textObj.set({ left: center.x + rotatedOffset.x, top: center.y + rotatedOffset.y, angle: d.angle });
         textObj.bringToFront();
     }
 
@@ -684,21 +803,16 @@
         }
     }
     
-    // --- Interaction Mode Toggles ---
-
     function setCanvasInteraction(enabled) {
         canvas2d.selection = enabled;
         canvas2d.forEachObject(o => o.set('evented', enabled));
     }
-
-    // --- Wall Drawing Functions ---
     
     function toggleDrawWallsMode() {
         const btn = document.getElementById('draw-walls-button');
         isDrawingWallsMode = !isDrawingWallsMode;
-        
         if (isDrawingWallsMode) {
-            if(isMeteringMode) toggleMeteringMode(); // Turn off other modes
+            if(isMeteringMode) toggleMeteringMode();
             btn.textContent = 'Finish Drawing';
             btn.classList.add('active');
             setCanvasInteraction(false);
@@ -718,34 +832,22 @@
         const dy = p2.y - p1.y;
         const length = Math.sqrt(dx * dx + dy * dy);
         const angle = fabric.util.radiansToDegrees(Math.atan2(dy, dx));
-
         const wall = new fabric.Rect({
-            left: p1.x,
-            top: p1.y,
-            width: length,
-            height: 10,
-            angle: angle,
-            fill: 'black',
-            originX: 'left',
-            originY: 'center',
-            isWall: true,
-            uid: ++uidCounter
+            left: p1.x, top: p1.y, width: length, height: 10, angle: angle,
+            fill: 'black', originX: 'left', originY: 'center', isWall: true, uid: ++uidCounter
         });
-
         canvas2d.add(wall);
         updateLengthTextFor(wall);
     }
-    
-    // --- Metering Functions ---
     
     function toggleMeteringMode() {
         const btn = document.getElementById('metering-button');
         isMeteringMode = !isMeteringMode;
         if (isMeteringMode) {
-            if(isDrawingWallsMode) toggleDrawWallsMode(); // Turn off other modes
+            if(isDrawingWallsMode) toggleDrawWallsMode();
             btn.textContent = 'Cancel Metering';
             btn.classList.add('active');
-            clearMetering(); // Clear any previous measurement
+            clearMetering();
             setCanvasInteraction(false);
         } else {
             btn.textContent = 'Start Metering';
@@ -764,53 +866,36 @@
 
     function handleMouseMove(opt) {
         if (!isDrawingWallsMode || wallDrawingPoints.length === 0) return;
-
-        if (previewLine) {
-            canvas2d.remove(previewLine);
-        }
-
+        if (previewLine) canvas2d.remove(previewLine);
         const pointer = canvas2d.getPointer(opt.e);
         const startPoint = wallDrawingPoints[wallDrawingPoints.length - 1];
-        
         previewLine = new fabric.Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
-            stroke: 'rgba(0,0,0,0.3)',
-            strokeWidth: 2,
-            selectable: false,
-            evented: false,
-            strokeDashArray: [5, 5]
+            stroke: 'rgba(0,0,0,0.3)', strokeWidth: 2, selectable: false, evented: false, strokeDashArray: [5, 5]
         });
-        canvas2d.add(previewLine);
-        canvas2d.requestRenderAll();
+        canvas2d.add(previewLine).requestRenderAll();
     }
 
     function handleMouseDown(opt) {
         if(isDrawingWallsMode) {
             const pointer = canvas2d.getPointer(opt.e);
             wallDrawingPoints.push(pointer);
-
             if (wallDrawingPoints.length > 1) {
-                const startPoint = wallDrawingPoints[wallDrawingPoints.length - 2];
-                const endPoint = wallDrawingPoints[wallDrawingPoints.length - 1];
-                createWallSegment(startPoint, endPoint);
+                createWallSegment(wallDrawingPoints[wallDrawingPoints.length - 2], pointer);
             }
             return;
         }
-
         if (!isMeteringMode) return;
         const pointer = canvas2d.getPointer(opt.e);
-
-        // Check for loop close
         if (meteringPoints.length > 2) {
             const startPoint = meteringPoints[0];
-            const dist = Math.sqrt(Math.pow(startPoint.x - pointer.x, 2) + Math.pow(startPoint.y - pointer.y, 2));
-            if (dist < 10) { // Close loop if click is near start point
+            const dist = Math.hypot(startPoint.x - pointer.x, startPoint.y - pointer.y);
+            if (dist < 10) {
                 drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
                 calculateAndShowArea();
-                isMeteringMode = false; // End metering session
+                isMeteringMode = false;
                 return;
             }
         }
-
         meteringPoints.push(pointer);
         const circle = new fabric.Circle({
             radius: 3, fill: 'red', left: pointer.x, top: pointer.y,
@@ -818,10 +903,8 @@
         });
         meteringObjects.push(circle);
         canvas2d.add(circle);
-
         if (meteringPoints.length > 1) {
-            const prevPoint = meteringPoints[meteringPoints.length - 2];
-            drawMeteringLine(prevPoint, pointer);
+            drawMeteringLine(meteringPoints[meteringPoints.length - 2], pointer);
         }
     }
 
@@ -831,25 +914,16 @@
         });
         meteringObjects.push(line);
         canvas2d.add(line);
-        
-        // Add length text
-        const lengthPx = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        const lengthMM = lengthPx / scale;
+        const lengthMM = Math.hypot(p1.x - p2.x, p1.y - p2.y) / scale;
         const text = new fabric.Text(`${Math.round(lengthMM)} mm`, {
-            left: (p1.x + p2.x) / 2,
-            top: (p1.y + p2.y) / 2,
-            fontSize: 14,
-            fill: 'black',
-            originX: 'center',
-            originY: 'center',
-            isMeteringObject: true
+            left: (p1.x + p2.x) / 2, top: (p1.y + p2.y) / 2, fontSize: 14,
+            fill: 'black', originX: 'center', originY: 'center', isMeteringObject: true
         });
         meteringObjects.push(text);
         canvas2d.add(text);
     }
     
     function calculateAndShowArea() {
-        // Shoelace formula for area in pixels
         let areaPx = 0;
         for (let i = 0; i < meteringPoints.length; i++) {
             const p1 = meteringPoints[i];
@@ -857,29 +931,13 @@
             areaPx += (p1.x * p2.y - p2.x * p1.y);
         }
         areaPx = Math.abs(areaPx) / 2;
-
-        // Convert px² to m²
-        const mPerPx = 1 / scale / 1000;
-        const areaM2 = areaPx * mPerPx * mPerPx;
-        
-        // Find centroid to place text
-        let centroid = { x: 0, y: 0 };
-        meteringPoints.forEach(p => {
-            centroid.x += p.x;
-            centroid.y += p.y;
-        });
+        const areaM2 = areaPx * (1 / scale / 1000)**2;
+        let centroid = meteringPoints.reduce((acc, p) => ({x: acc.x + p.x, y: acc.y + p.y}), {x:0, y:0});
         centroid.x /= meteringPoints.length;
         centroid.y /= meteringPoints.length;
-
         const areaText = new fabric.Text(`${areaM2.toFixed(2)} m²`, {
-            left: centroid.x,
-            top: centroid.y,
-            fontSize: 16,
-            fill: 'blue',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            isMeteringObject: true
+            left: centroid.x, top: centroid.y, fontSize: 16, fill: 'blue', fontWeight: 'bold',
+            originX: 'center', originY: 'center', isMeteringObject: true
         });
         meteringObjects.push(areaText);
         canvas2d.add(areaText);
@@ -899,83 +957,133 @@
         dirLight.position.set(150, 200, 100);
         scene.add(dirLight);
         
-        // Create floor
         const floorGeometry = new THREE.PlaneGeometry(10000, 10000);
-        const floorMaterial = new THREE.MeshStandardMaterial({ color: document.getElementById('floor-color').value });
+        const materialConfig = {};
+        if (floorTextureURL) {
+            const texture = new THREE.TextureLoader().load(floorTextureURL);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(20, 20);
+            materialConfig.map = texture;
+            materialConfig.color = 0xffffff;
+        } else {
+            materialConfig.color = document.getElementById('floor-color').value;
+        }
+        const floorMaterial = new THREE.MeshStandardMaterial(materialConfig);
         floor = new THREE.Mesh(floorGeometry, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
-        
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableKeys = false;
         camera.lookAt(controls.target);
-
-        update3DScene(); // Call once on init to set initial textures/colors
     }
     
     function update3DScene() {
-        // Update floor material
         if (floor) {
             if (floorTextureURL) {
-                // Check if the map needs to be created or updated
                 if (!floor.material.map || floor.material.map.image.src !== floorTextureURL) {
                     const texture = new THREE.TextureLoader().load(floorTextureURL);
                     texture.wrapS = THREE.RepeatWrapping;
                     texture.wrapT = THREE.RepeatWrapping;
                     texture.repeat.set(20, 20);
                     floor.material.map = texture;
-                    floor.material.color.set(0xffffff); // Use white so texture is not tinted
+                    floor.material.color.set(0xffffff);
                     floor.material.needsUpdate = true;
                 }
-            } else { // If no texture, use color
-                if (floor.material.map) { // Remove texture if it exists
-                    floor.material.map.dispose();
-                    floor.material.map = null;
-                }
+            } else {
+                floor.material.map = null;
                 floor.material.color.set(document.getElementById('floor-color').value);
                 floor.material.needsUpdate = true;
             }
         }
 
-        // Update walls and items
-        Object.values(sceneObjects3D).forEach(mesh => {
-            scene.remove(mesh);
-            mesh.geometry.dispose();
-            if(mesh.material.map) mesh.material.map.dispose();
-            mesh.material.dispose();
-        });
+        Object.values(sceneObjects3D).forEach(obj => scene.remove(obj));
         sceneObjects3D = {};
-        const wallHeight = document.getElementById('wall-height').value * scale;
+
+        const allObjects = canvas2d.getObjects();
+        const walls = allObjects.filter(o => o.isWall);
+        const items = allObjects.filter(o => o.isItem);
+        const holes = allObjects.filter(o => o.isHole);
+        const doors = allObjects.filter(o => o.isDoor);
+        const wallHeight = document.getElementById('wall-height').value;
         const defaultWallColor = '#ffffff'; 
 
-        canvas2d.getObjects().forEach(obj2d => {
-            if(obj2d.isLengthText || obj2d.isMeteringObject) return;
-            if (obj2d.isItem) create3DItem(obj2d);
-            else if (obj2d.isWall) create3DWall(obj2d, wallHeight, defaultWallColor);
+        items.forEach(item2d => create3DItem(item2d));
+        doors.forEach(door2d => {
+            const wall = walls.find(w => w.intersectsWithObject(door2d));
+            create3DDoor(door2d, wall);
         });
+        const openings = [...holes, ...doors];
+        walls.forEach(wall2d => create3DWall(wall2d, wallHeight, defaultWallColor, openings));
     }
 
-    function create3DWall(wall2d, wallHeight, defaultColor) {
-        const d = fabric.util.qrDecompose(wall2d.calcTransformMatrix());
-        const geometry = new THREE.BoxGeometry(wall2d.getScaledWidth(), wallHeight, wall2d.getScaledHeight());
-        let material;
+    function create3DWall(wall2d, wallHeight_mm, defaultColor, allOpenings) {
+        wall2d.setCoords();
 
+        const wallLength_scene = wall2d.getScaledWidth();
+        const wallHeight_scene = wallHeight_mm * scale;
+        const wallThickness_scene = wall2d.getScaledHeight();
+
+        const intersectingOpenings = allOpenings.filter(op => op.intersectsWithObject(wall2d));
+
+        const wallShape = new THREE.Shape();
+        wallShape.moveTo(0, 0);
+        wallShape.lineTo(wallLength_scene, 0);
+        wallShape.lineTo(wallLength_scene, wallHeight_scene);
+        wallShape.lineTo(0, wallHeight_scene);
+        wallShape.lineTo(0, 0);
+
+        const wallAngle_rad = fabric.util.degreesToRadians(wall2d.angle);
+        const wallTopLeft_canvas = wall2d.getPointByOrigin('left', 'top');
+
+        intersectingOpenings.forEach(opening2d => {
+            let props, width_mm, height_mm, y_mm;
+            if (opening2d.isHole) {
+                props = opening2d.holeProps;
+                width_mm = props.width; height_mm = props.height; y_mm = props.y;
+            } else if (opening2d.isDoor) {
+                props = opening2d.doorProps;
+                width_mm = props.width; height_mm = props.height; y_mm = 0;
+            }
+
+            const openingWidth_scene = width_mm * scale;
+            const openingHeight_scene = height_mm * scale;
+            const openingY_scene = y_mm * scale;
+            
+            const openingRefPoint_canvas = opening2d.isDoor ? new fabric.Point(opening2d.left, opening2d.top) : opening2d.getCenterPoint();
+            const vectorFromWallOrigin = openingRefPoint_canvas.subtract(wallTopLeft_canvas);
+            const rotatedVector = fabric.util.rotatePoint(vectorFromWallOrigin, new fabric.Point(0,0), -wallAngle_rad);
+
+            const openingStartX_scene = opening2d.isDoor ? rotatedVector.x : rotatedVector.x - (openingWidth_scene / 2);
+            
+            const holePath = new THREE.Path();
+            holePath.moveTo(openingStartX_scene, openingY_scene);
+            holePath.lineTo(openingStartX_scene + openingWidth_scene, openingY_scene);
+            holePath.lineTo(openingStartX_scene + openingWidth_scene, openingY_scene + openingHeight_scene);
+            holePath.lineTo(openingStartX_scene, openingY_scene + openingHeight_scene);
+            holePath.lineTo(openingStartX_scene, openingY_scene);
+            wallShape.holes.push(holePath);
+        });
+
+        const extrudeSettings = { steps: 1, depth: wallThickness_scene, bevelEnabled: false };
+        const geometry = new THREE.ExtrudeGeometry(wallShape, extrudeSettings);
+
+        let material;
         if (wall2d.textureURL) {
             const texture = new THREE.TextureLoader().load(wall2d.textureURL);
             texture.wrapS = THREE.RepeatWrapping;
             texture.wrapT = THREE.RepeatWrapping;
-            const wallLengthMM = wall2d.getScaledWidth() / scale;
-            const wallHeightMM = wallHeight / scale;
-            texture.repeat.set(wallLengthMM / 1000, wallHeightMM / 1000); // Repeat every meter
-            material = new THREE.MeshStandardMaterial({ map: texture });
+            texture.repeat.set( (wall2d.getScaledWidth() / scale) / 1000, wallHeight_mm / 1000);
+            material = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
         } else {
             const color = wall2d.color3d || defaultColor;
-            material = new THREE.MeshStandardMaterial({ color: color });
+            material = new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide });
         }
 
         const wall3d = new THREE.Mesh(geometry, material);
-        wall3d.position.set(d.translateX - canvas2d.width / 2, wallHeight / 2, d.translateY - canvas2d.height / 2);
-        wall3d.rotation.y = -fabric.util.degreesToRadians(d.angle);
+        wall3d.position.set(wallTopLeft_canvas.x - canvas2d.width / 2, 0, wallTopLeft_canvas.y - canvas2d.height / 2);
+        wall3d.rotation.y = -wallAngle_rad;
+        
         sceneObjects3D[wall2d.uid] = wall3d;
         scene.add(wall3d);
     }
@@ -984,18 +1092,16 @@
         const props = item2d.itemProps;
         const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
         let material;
-
         if (item2d.textureURL) {
             const texture = new THREE.TextureLoader().load(item2d.textureURL);
             texture.wrapS = THREE.RepeatWrapping;
             texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(props.width / 1000, props.height / 1000); // Repeat every meter on front face
+            texture.repeat.set(props.width / 1000, props.height / 1000);
             material = new THREE.MeshStandardMaterial({ map: texture });
         } else {
             const color = props.color || (item2d.fill);
             material = new THREE.MeshStandardMaterial({ color: color });
         }
-
         const item3d = new THREE.Mesh(geometry, material);
         const center = item2d.getCenterPoint();
         item3d.position.set(
@@ -1008,26 +1114,109 @@
         scene.add(item3d);
     }
 
+    function create3DDoor(door2d, wall2d) {
+        const props = door2d.doorProps;
+        const doorThickness_mm = 40; 
+        const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, doorThickness_mm * scale);
+        
+        // Translate geometry to set the pivot point to the left edge.
+        geometry.translate((props.width * scale) / 2, 0, 0);
+
+        let material;
+        if (door2d.textureURL) {
+            const texture = new THREE.TextureLoader().load(door2d.textureURL);
+            material = new THREE.MeshStandardMaterial({ map: texture });
+        } else {
+            material = new THREE.MeshStandardMaterial({ color: props.color });
+        }
+        const door3d = new THREE.Mesh(geometry, material);
+        const doorAngle_rad = -fabric.util.degreesToRadians(door2d.angle);
+        
+        const hingePoint = new fabric.Point(door2d.left, door2d.top);
+        
+        door3d.position.set(
+            hingePoint.x - canvas2d.width / 2,
+            (props.height * scale) / 2,
+            hingePoint.y - canvas2d.height / 2
+        );
+        door3d.rotation.y = doorAngle_rad;
+        
+        const wallThickness_scene = wall2d ? wall2d.getScaledHeight() : 100 * scale;
+        
+        // Offset the door from the wall's centerline to its face, respecting the swing direction
+        const offset = new THREE.Vector3(0, 0, (wallThickness_scene / 2) * props.swingDirection);
+        offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), doorAngle_rad);
+        door3d.position.add(offset);
+        
+        door3d.userData.isDoor = true;
+        door3d.userData.isOpen = false;
+        door3d.userData.isAnimating = false;
+        door3d.userData.swingDirection = props.swingDirection;
+        door3d.userData.originalRotationY = door3d.rotation.y;
+        
+        sceneObjects3D[door2d.uid] = door3d;
+        scene.add(door3d);
+    }
+
+    function toggleClosestDoor() {
+        let closestDoor = null;
+        let minDistance = 2000;
+
+        const cameraPosition = camera.position;
+        
+        scene.children.forEach(child => {
+            if (child.userData.isDoor) {
+                const distance = child.position.distanceTo(cameraPosition);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestDoor = child;
+                }
+            }
+        });
+
+        if (closestDoor && !closestDoor.userData.isAnimating) {
+            closestDoor.userData.isAnimating = true;
+            closestDoor.userData.isOpen = !closestDoor.userData.isOpen;
+            closestDoor.userData.animationProgress = 0;
+            closestDoor.userData.startRotationY = closestDoor.rotation.y;
+
+            const openAngle = closestDoor.userData.originalRotationY + ((Math.PI / 2) * closestDoor.userData.swingDirection);
+            closestDoor.userData.targetRotationY = closestDoor.userData.isOpen ? openAngle : closestDoor.userData.originalRotationY;
+        }
+    }
+
     // --- Main Animation Loop ---
     function animate() {
         requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
         if (is3DMode) {
             handle3DCameraMovement();
             controls.update();
+
+            scene.children.forEach(child => {
+                if (child.userData.isAnimating) {
+                    child.userData.animationProgress += delta * 2;
+                    child.rotation.y = THREE.MathUtils.lerp(child.userData.startRotationY, child.userData.targetRotationY, child.userData.animationProgress);
+
+                    if (child.userData.animationProgress >= 1) {
+                        child.rotation.y = child.userData.targetRotationY;
+                        child.userData.isAnimating = false;
+                        child.userData.animationProgress = 0;
+                    }
+                }
+            });
+
             renderer.render(scene, camera);
         } else {
             handle2DPan();
-            // renderAll is called by handleMouseMove when drawing, so we avoid redundant calls
-            if(!isDrawingWallsMode) {
-                canvas2d.renderAll();
-            }
+            if(!isDrawingWallsMode) canvas2d.renderAll();
         }
     }
 
     // Initial setup
-    updateAllLengthTexts();
-    canvas2d.requestRenderAll();
     animate();
+
 </script>
 
 </body>
