@@ -38,8 +38,8 @@
         #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover { background-color: #c82333; }
         #menu #load-button, #menu #save-screenshot-button, #menu #apply-texture-button, #menu #apply-floor-texture-button { background-color: #28a745; }
         #menu #load-button:hover, #menu #save-screenshot-button:hover, #menu #apply-texture-button:hover, #menu #apply-floor-texture-button:hover { background-color: #218838; }
-        #menu #info-button { background-color: #17a2b8; }
-        #menu #info-button:hover { background-color: #138496; }
+        #menu #info-button, #menu #change-hinge-corner-button { background-color: #17a2b8; }
+        #menu #info-button:hover, #menu #change-hinge-corner-button:hover { background-color: #138496; }
 
         #canvas-container {
             flex-grow: 1;
@@ -146,13 +146,23 @@
             <div class="input-group"><label for="hole-width">Width (mm):</label><input type="number" id="hole-width"></div>
             <div class="input-group"><label for="hole-height">Height (mm):</label><input type="number" id="hole-height"></div>
             <div class="input-group"><label for="hole-y-position">Vertical Position (mm):</label><input type="number" id="hole-y-position"></div>
+             <div class="input-group">
+                <label for="edit-hole-angle">Angle (°):</label>
+                <input type="number" id="edit-hole-angle">
+            </div>
         </div>
          <!-- Door-specific controls -->
         <div id="door-editor-controls" style="display: none;">
             <div class="input-group"><label for="door-width">Width (mm):</label><input type="number" id="door-width"></div>
             <div class="input-group"><label for="door-height">Height (mm):</label><input type="number" id="door-height"></div>
             <div class="input-group"><label for="door-color">Color:</label><input type="color" id="door-color"></div>
+             <div class="input-group">
+                <label for="edit-door-angle">Angle (°):</label>
+                <input type="number" id="edit-door-angle">
+            </div>
             <button id="mirror-door-button">Mirror Swing</button>
+            <button id="change-hinge-corner-button">Change Hinge Corner</button>
+             <p style="font-size: 12px; margin-top: 5px;">Current Hinge: <b id="hinge-corner-display">Top Left</b></p>
         </div>
     </div>
     
@@ -186,6 +196,10 @@
     <div class="info-content">
         <span class="close-button">&times;</span>
         <h2>Controls Guide</h2>
+        <h3>General</h3>
+        <ul>
+             <li><b>Switch 2D/3D View:</b> <kbd>Q</kbd> key.</li>
+        </ul>
         <h3>2D Mode</h3>
         <ul>
             <li><b>Pan View:</b> <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> keys.</li>
@@ -214,51 +228,55 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
 <script>
+    // --- GLOBAL VARIABLES & CONSTANTS ---
     const canvasContainer = document.getElementById('canvas-container');
-    const scale = 0.1;
-    let showLengths = true;
-    const keyState = {};
-    let uidCounter = 0;
+    const scale = 0.1; // Conversion factor: 10 pixels = 1 meter (1000mm)
+    let showLengths = true; // State for showing/hiding wall length text
+    const keyState = {}; // Tracks currently pressed keys for smooth panning/movement
+    let uidCounter = 0; // Unique ID counter for all created objects
 
-    // --- 2D Canvas ---
+    // --- 2D CANVAS SETUP (FABRIC.JS) ---
     const canvas2d = new fabric.Canvas('canvas-2d', {
         width: canvasContainer.clientWidth,
         height: canvasContainer.clientHeight,
         backgroundColor: 'white',
-        preserveObjectStacking: true,
-        renderOnAddRemove: false
+        preserveObjectStacking: true, // Prevents objects from changing z-index on selection
+        renderOnAddRemove: false // Manual rendering for better performance
     });
+    // Define custom properties to be saved/loaded with canvas objects
     const customProps = ['isWall', 'isItem', 'itemProps', 'isHole', 'holeProps', 'isDoor', 'doorProps', 'uid', 'color3d', 'textureURL'];
-    let lengthTextObjects = {};
+    let lengthTextObjects = {}; // Dictionary to hold length text objects, keyed by wall UID
 
-    // --- Mode States ---
-    let isMeteringMode = false;
-    let meteringPoints = [];
-    let meteringObjects = [];
+    // --- MODE STATES ---
+    let isMeteringMode = false; // Is the user currently using the measuring tool?
+    let meteringPoints = []; // Array of points for the metering polygon
+    let meteringObjects = []; // Array of fabric objects (lines, text) created by the metering tool
     
-    let isDrawingWallsMode = false;
-    let wallDrawingPoints = [];
-    let previewLine = null;
+    let isDrawingWallsMode = false; // Is the user currently using the wall drawing tool?
+    let wallDrawingPoints = []; // Array of corner points for drawing walls
+    let previewLine = null; // The dashed line showing the next wall segment
 
-    // --- 3D Scene ---
-    let scene, camera, renderer, controls;
-    let floor;
-    let sceneObjects3D = {};
-    const clock = new THREE.Clock();
+    // --- 3D SCENE SETUP (THREE.JS) ---
+    let scene, camera, renderer, controls; // Core Three.js components
+    let floor; // The 3D floor plane
+    let sceneObjects3D = {}; // Dictionary to hold 3D objects, keyed by their 2D counterpart's UID
+    const clock = new THREE.Clock(); // Used for animation timing
     const canvas3d = document.getElementById('canvas-3d');
-    let is3DMode = false;
-    let floorTextureURL = null;
+    let is3DMode = false; // Is the 3D view currently active?
+    let floorTextureURL = null; // Holds the Data URL for the floor texture
     
-    // --- Event Listeners ---
+    // --- GLOBAL EVENT LISTENERS ---
+    // Listen for key presses and releases for global controls
     document.addEventListener('keydown', (e) => {
-        const activeEl = document.activeElement;
-        if(activeEl.tagName !== 'INPUT') {
+        // Ignore key presses if an input field is focused
+        if(document.activeElement.tagName !== 'INPUT') {
             keyState[e.key.toLowerCase()] = true;
             handleGlobalKeys(e);
         }
     });
     document.addEventListener('keyup', (e) => keyState[e.key.toLowerCase()] = false);
     
+    // Wire up menu buttons to their respective functions
     document.getElementById('save-button').addEventListener('click', saveToFile);
     document.getElementById('file-input').addEventListener('change', loadFromFile);
     document.getElementById('texture-file-input').addEventListener('change', applyTexture);
@@ -274,15 +292,19 @@
     document.getElementById('insert-hole').addEventListener('click', insertHole);
     document.getElementById('insert-door').addEventListener('click', insertDoor);
     document.getElementById('mirror-door-button').addEventListener('click', mirrorDoor);
+    document.getElementById('change-hinge-corner-button').addEventListener('click', changeHingeCorner);
     document.getElementById('remove-object').addEventListener('click', removeSelectedObject);
     document.getElementById('toggle-lengths').addEventListener('click', toggleLengthVisibility);
     document.getElementById('toggle-3d').addEventListener('click', toggle3DMode);
     document.getElementById('metering-button').addEventListener('click', toggleMeteringMode);
 
+    // Wire up input fields in the "Selected Object" panel to update objects in real-time
     document.getElementById('edit-wall-length').addEventListener('input', updateWallFromMenu);
     document.getElementById('edit-wall-angle').addEventListener('input', updateWallFromMenu);
     document.getElementById('wall-color').addEventListener('input', update3DColorFromMenu);
-    
+    document.getElementById('edit-hole-angle').addEventListener('input', updateHoleAngleFromMenu);
+    document.getElementById('edit-door-angle').addEventListener('input', updateDoorAngleFromMenu);
+
     ['item-width', 'item-depth', 'item-height', 'item-y-position'].forEach(id => {
         document.getElementById(id).addEventListener('input', updateItemFromMenu);
     });
@@ -293,28 +315,32 @@
         document.getElementById(id).addEventListener('input', updateDoorFromMenu);
     });
 
-
+    // Handle window resizing to keep the canvas and 3D viewport correctly sized
     window.addEventListener('resize', onWindowResize);
     
-    // --- Canvas Event Listeners ---
+    // --- FABRIC.JS CANVAS EVENT LISTENERS ---
+
+    // Helper function to update the length text for a single object
     function updateTextForObject(obj) {
         if (!showLengths || !obj) return;
         if (obj.isWall) updateLengthTextFor(obj);
     }
 
+    // Main event handler for the 2D canvas
     canvas2d.on({
         'mouse:wheel': handle2DZoom,
         'mouse:down': handleMouseDown,
         'mouse:move': handleMouseMove,
-        'selection:created': updateMenu,
-        'selection:updated': updateMenu,
-        'selection:cleared': updateMenu,
-        'object:modified': (e) => {
-            updateMenu(e);
-            if(is3DMode) update3DScene();
+        'selection:created': updateMenu, // Update the side menu when an object is selected
+        'selection:updated': updateMenu, // Update the side menu when selection changes
+        'selection:cleared': updateMenu, // Clear the side menu when selection is cleared
+        'object:modified': (e) => { // When an object is moved, rotated, or scaled
+            updateMenu(e); // Update the menu with new properties
+            if(is3DMode) update3DScene(); // Rebuild the 3D scene
         },
         'object:moving': (e) => {
-            updateTextForObject(e.target);
+            updateTextForObject(e.target); // Update its length text
+            // For holes, walls and doors, a move requires a full 3D scene rebuild due to intersections
             if (is3DMode && (e.target.isHole || e.target.isWall || e.target.isDoor)) {
                  update3DScene();
             }
@@ -329,31 +355,45 @@
         }
     });
 
-    // --- Core Functions ---
+    // --- CORE APP FUNCTIONS ---
 
+    /**
+     * Removes the currently selected object(s) from the canvas and 3D scene.
+     */
     function removeSelectedObject() {
         canvas2d.getActiveObjects().forEach(activeObject => {
+            // Remove associated length text
             if (lengthTextObjects[activeObject.uid]) {
                 canvas2d.remove(lengthTextObjects[activeObject.uid]);
                 delete lengthTextObjects[activeObject.uid];
             }
+            // Remove associated 3D object
             if (sceneObjects3D[activeObject.uid]) {
                 scene.remove(sceneObjects3D[activeObject.uid]);
                 delete sceneObjects3D[activeObject.uid];
             }
+            // Remove the 2D object itself
             canvas2d.remove(activeObject);
         });
-        canvas2d.discardActiveObject();
+        canvas2d.discardActiveObject(); // Clear the active selection
         canvas2d.requestRenderAll();
         if (is3DMode) update3DScene(); 
     }
 
+    /**
+     * Serializes the entire 2D canvas content, including custom properties and textures,
+     * into a JSON file and prompts the user to download it.
+     */
     function saveToFile() {
+        // Filter out temporary objects like length text and metering lines
         const originalObjects = canvas2d.getObjects().filter(o => !o.isLengthText && !o.isMeteringObject && !o.isWallPoint);
+        // Create a JSON representation of the canvas, including our custom properties
         const json = canvas2d.toObject(customProps);
         json.objects = originalObjects.map(o => o.toObject(customProps));
+        // Add the floor texture URL to the save file
         json.floorTextureURL = floorTextureURL;
         
+        // Create a downloadable link for the JSON data
         const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(json, null, 2))}`;
         const a = document.createElement('a');
         a.href = dataStr;
@@ -363,12 +403,17 @@
         a.remove();
     }
 
+    /**
+     * Triggers a download of the current view (2D or 3D) as a JPG image.
+     */
     function saveScreenshot() {
         let dataUrl;
         if (is3DMode) {
+            // In 3D mode, render the scene once to ensure it's up to date, then get the data URL
             renderer.render(scene, camera);
             dataUrl = renderer.domElement.toDataURL('image/jpeg');
         } else {
+            // In 2D mode, get the data URL directly from the canvas
             dataUrl = canvas2d.toDataURL({
                 format: 'jpeg',
                 quality: 0.9
@@ -382,76 +427,112 @@
         a.remove();
     }
 
+    /**
+     * Loads a plan from a user-selected JSON file, clearing the current canvas and
+     * rebuilding the scene from the file's data.
+     * @param {Event} e - The file input change event.
+     */
     function loadFromFile(e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (f) => {
             const data = JSON.parse(f.target.result);
+            // Restore the floor texture URL
             floorTextureURL = data.floorTextureURL || null;
 
+            // Load the JSON data into the Fabric canvas
             canvas2d.loadFromJSON(data, () => {
                 const objectsToLoad = [];
+                // Fabric's default loader doesn't handle complex groups well, so we rebuild doors manually.
                 canvas2d.getObjects().forEach(obj => {
+                    // Recreate door groups using our custom function
                     if(obj.isDoor) {
                         const doorGroup = createDoorGroup(obj.doorProps);
-                        doorGroup.set({ left: obj.left, top: obj.top, angle: obj.angle, uid: obj.uid, textureURL: obj.textureURL, scaleY: obj.doorProps.swingDirection || 1 });
+                        // Restore all position, angle, scale, and custom properties
+                        doorGroup.set({ 
+                            left: obj.left, 
+                            top: obj.top, 
+                            angle: obj.angle, 
+                            uid: obj.uid, 
+                            textureURL: obj.textureURL, 
+                            scaleY: obj.doorProps.swingDirection || 1 // scaleY represents mirrored state
+                        });
+                        // Restore hinge corner property if it exists in the file
+                        if (obj.doorProps.hingeCorner) {
+                            doorGroup.doorProps.hingeCorner = obj.doorProps.hingeCorner;
+                        }
                         objectsToLoad.push(doorGroup);
                     } else {
+                        // Ensure every object has a UID
                         if (obj.uid === undefined) obj.uid = ++uidCounter;
                         objectsToLoad.push(obj);
                     }
                 });
                 
+                // Clear the canvas and add the newly created/restored objects
                 canvas2d.clear();
                 objectsToLoad.forEach(obj => canvas2d.add(obj));
 
-                updateAllLengthTexts();
+                updateAllLengthTexts(); // Recreate all wall length labels
                 canvas2d.requestRenderAll();
 
+                // If in 3D mode, rebuild the 3D scene from the new data
                 if (is3DMode) {
                     update3DScene();
                 }
             });
         };
         reader.readAsText(file);
-        e.target.value = '';
+        e.target.value = ''; // Reset the file input
     }
     
+    /**
+     * Applies a user-selected image file as a texture to the currently selected object(s).
+     * @param {Event} e - The file input change event.
+     */
     function applyTexture(e) {
         const file = e.target.files[0];
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = (f) => {
-            const dataURL = f.target.result;
+            const dataURL = f.target.result; // The texture image as a Data URL
             const activeObjects = canvas2d.getActiveObjects();
             if (activeObjects.length === 0) return;
+            
+            // Apply the texture URL to each selected object
             activeObjects.forEach(obj => {
                 obj.textureURL = dataURL;
+                 // For doors, store it in the props as well for persistence
                  if (obj.isDoor) {
                     obj.doorProps.textureURL = dataURL;
                 }
             });
-            if (is3DMode) update3DScene();
+            if (is3DMode) update3DScene(); // Rebuild 3D scene to show new texture
         };
         reader.readAsDataURL(file);
         e.target.value = '';
     }
     
+    /**
+     * Applies a user-selected image file as a texture to the 3D floor.
+     * @param {Event} e - The file input change event.
+     */
     function applyFloorTexture(e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (f) => {
             floorTextureURL = f.target.result;
+            // If in 3D mode, apply the new texture immediately
             if (is3DMode && floor) {
                 const texture = new THREE.TextureLoader().load(floorTextureURL);
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(20, 20);
+                texture.wrapS = THREE.RepeatWrapping; // Repeat texture horizontally
+                texture.wrapT = THREE.RepeatWrapping; // Repeat texture vertically
+                texture.repeat.set(20, 20); // How many times to repeat
                 floor.material.map = texture;
-                floor.material.color.set(0xffffff);
+                floor.material.color.set(0xffffff); // Reset color to show texture fully
                 floor.material.needsUpdate = true;
             }
         };
@@ -459,35 +540,54 @@
         e.target.value = '';
     }
 
+    /**
+     * Handles global key presses for actions like delete, zoom, and mode switching.
+     * @param {KeyboardEvent} e - The keydown event.
+     */
     function handleGlobalKeys(e) {
         const key = e.key.toLowerCase();
+        
+        // Switch between 2D and 3D mode with 'q'
+        if (key === 'q') {
+            toggle3DMode();
+        }
+        // Exit special modes with Escape key
         if (key === 'escape') {
             if (isDrawingWallsMode) toggleDrawWallsMode();
             if (isMeteringMode) toggleMeteringMode();
         }
+        // Delete selected object(s)
         if (key === 'backspace' || key === 'delete') {
             e.preventDefault();
             removeSelectedObject();
         }
+        // Zoom in/out with R/F keys in both 2D and 3D
         if (key === 'r' || key === 'f') {
             e.preventDefault();
             const zoomFactor = 1.1;
             const zoom = key === 'r' ? zoomFactor : 1 / zoomFactor;
             if (is3DMode) {
+                 // Move camera forward/backward in 3D
                  const forward = new THREE.Vector3();
                  camera.getWorldDirection(forward);
                  camera.position.addScaledVector(forward, (1 - 1/zoom) * 1000);
             } else {
+                // Zoom 2D canvas towards the center
                 canvas2d.zoomToPoint(new fabric.Point(canvas2d.width / 2, canvas2d.height / 2), canvas2d.getZoom() * zoom);
             }
         }
+        // Toggle door open/close in 3D mode
         if (key === 'e' && is3DMode) {
             toggleClosestDoor();
         }
     }
 
+    /**
+     * Handles zooming the 2D canvas with the mouse wheel.
+     * @param {Event} opt - The fabric.js mouse:wheel event.
+     */
     function handle2DZoom(opt) {
-        if (isMeteringMode || isDrawingWallsMode) return;
+        if (isMeteringMode || isDrawingWallsMode) return; // Disable zoom in special modes
         opt.e.preventDefault();
         opt.e.stopPropagation();
         const delta = opt.e.deltaY;
@@ -495,12 +595,16 @@
         zoom *= 0.999 ** delta;
         if (zoom > 20) zoom = 20;
         if (zoom < 0.1) zoom = 0.1;
+        // Zoom towards the mouse pointer's position
         canvas2d.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
     }
 
+    /**
+     * Pans the 2D view based on WASD keys held down.
+     */
     function handle2DPan() {
         if(is3DMode) return;
-        const panSpeed = 15 / canvas2d.getZoom();
+        const panSpeed = 15 / canvas2d.getZoom(); // Pan speed adjusts with zoom level
         let panX = 0, panY = 0;
         if (keyState['w']) panY += panSpeed;
         if (keyState['s']) panY -= panSpeed;
@@ -512,37 +616,51 @@
         }
     }
     
+    /**
+     * Moves the 3D camera based on WASD/IJKL/Arrow keys held down.
+     */
     function handle3DCameraMovement() {
         if(!is3DMode) return;
-        const moveSpeed = 15.0;
+        const moveSpeed = 15.0; // Camera movement speed
         const forward = new THREE.Vector3();
-        camera.getWorldDirection(forward);
-        const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
+        camera.getWorldDirection(forward); // Get camera's forward direction
+        const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize(); // Get camera's right direction
         const moveDirection = new THREE.Vector3(0,0,0);
+        
+        // WASD or IJKL for walking/strafing
         if (keyState['w'] || keyState['i']) moveDirection.add(forward);
         if (keyState['s'] || keyState['k']) moveDirection.sub(forward);
         if (keyState['a'] || keyState['j']) moveDirection.sub(right);
         if (keyState['d'] || keyState['l']) moveDirection.add(right);
+        
         if(moveDirection.lengthSq() > 0){
             const finalMove = moveDirection.normalize().multiplyScalar(moveSpeed);
             camera.position.add(finalMove);
-            controls.target.add(finalMove);
+            controls.target.add(finalMove); // Move the orbit controls target with the camera
         }
+        // Arrow keys for vertical movement
         if (keyState['arrowup']) camera.position.y += moveSpeed;
         if (keyState['arrowdown']) camera.position.y -= moveSpeed;
     }
 
+    /**
+     * Inserts a new wall with default dimensions onto the 2D canvas.
+     */
     function insertWall() {
         const length = document.getElementById('wall-length').value;
         const wall = new fabric.Rect({
             width: length * scale, height: 10, fill: 'black', left: 50, top: 50,
-            originX: 'left', originY: 'center', isWall: true, uid: ++uidCounter
+            originX: 'left', originY: 'center', 
+            isWall: true, uid: ++uidCounter // Custom properties
         });
         canvas2d.add(wall);
         if (showLengths) updateLengthTextFor(wall);
         canvas2d.requestRenderAll();
     }
 
+    /**
+     * Inserts a new generic item (cube) onto the 2D canvas.
+     */
     function insertItem() {
         const item = new fabric.Rect({
             width: 600 * scale, height: 600 * scale, fill: '#A52A2A', left: 200, top: 200,
@@ -553,6 +671,9 @@
         canvas2d.add(item).requestRenderAll();
     }
 
+    /**
+     * Inserts a new hole/window object onto the 2D canvas.
+     */
     function insertHole() {
         const hole = new fabric.Rect({
             width: 900 * scale, height: 20 * scale,
@@ -565,64 +686,105 @@
         canvas2d.add(hole).requestRenderAll();
     }
 
+    /**
+     * Creates a fabric.Group representing a door, including the slab and swing arc.
+     * @param {object} props - The properties of the door (width, height, color, etc.).
+     * @returns {fabric.Group} The created door group object.
+     */
     function createDoorGroup(props) {
         const width_2d = props.width * scale;
         const doorSlabThickness = 40 * scale; 
         
+        // The door slab itself
         const slab = new fabric.Rect({
-            left: 0,
-            top: 0,
-            width: width_2d,
-            height: doorSlabThickness,
-            fill: props.color,
-            stroke: 'black',
-            strokeWidth: 0.5,
-            originX: 'left',
-            originY: 'center',
+            left: 0, top: 0,
+            width: width_2d, height: doorSlabThickness,
+            fill: props.color, stroke: 'black', strokeWidth: 0.5,
+            originX: 'left', originY: 'center',
         });
         
+        // The dashed line representing the swing arc
         const arc = new fabric.Path(`M 0 0 A ${width_2d} ${width_2d} 0 0 1 ${width_2d} -${width_2d}`, {
-            fill: '',
-            stroke: 'rgba(0,0,0,0.5)',
-            strokeWidth: 1,
-            strokeDashArray: [3,3],
-            originX: 'left',
-            originY: 'top',
+            fill: '', stroke: 'rgba(0,0,0,0.5)',
+            strokeWidth: 1, strokeDashArray: [3,3],
+            originX: 'left', originY: 'top',
         });
 
+        // Combine slab and arc into a group
         const doorGroup = new fabric.Group([slab, arc], {
-            left: 150,
-            top: 250,
+            left: 150, top: 250,
             isDoor: true,
-            doorProps: { ...props },
+            doorProps: { ...props }, // Store all properties for 3D and saving
             uid: ++uidCounter,
             subTargetCheck: true, 
-            lockScalingFlip: true,
-            originX: 'left',
-            originY: 'center'
+            lockScalingFlip: true, // Prevent flipping when scaling
+            originX: 'left', originY: 'center'
         });
         return doorGroup;
     }
 
+    /**
+     * Inserts a new door with default properties onto the 2D canvas.
+     */
     function insertDoor() {
-        const doorProps = { width: 800, height: 2000, color: '#D2B48C', swingDirection: 1 };
+        const doorProps = { 
+            width: 800, height: 2000, color: '#D2B48C', 
+            swingDirection: 1, hingeCorner: 'topLeft' // Add hingeCorner default
+        };
         const door = createDoorGroup(doorProps);
         canvas2d.add(door).requestRenderAll();
     }
 
+    /**
+     * Mirrors the swing direction of the selected door.
+     */
     function mirrorDoor() {
         const door = canvas2d.getActiveObject();
         if (!door || !door.isDoor) return;
 
+        // Invert the swing direction property
         door.doorProps.swingDirection *= -1;
+        // Vertically flip the group to mirror the 2D representation
         door.scaleY *= -1;
         
-        door.setCoords();
+        door.setCoords(); // Update the object's coordinates
         canvas2d.requestRenderAll();
-        if(is3DMode) update3DScene();
+        
+        // Mirroring should trigger a full scene rebuild to ensure the hole calculation is correct
+        if (is3DMode) {
+           update3DScene();
+        }
     }
 
+    /**
+     * Cycles the 3D hinge position for the selected door through its four corners.
+     */
+    function changeHingeCorner() {
+        const door = canvas2d.getActiveObject();
+        if (!door || !door.isDoor) return;
+
+        const corners = ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'];
+        const currentHinge = door.doorProps.hingeCorner || 'topLeft';
+        const currentIndex = corners.indexOf(currentHinge);
+        // Get the next corner, wrapping around if at the end
+        const nextIndex = (currentIndex + 1) % corners.length;
+        const newHinge = corners[nextIndex];
+
+        door.doorProps.hingeCorner = newHinge;
+        
+        // Update the display text in the menu
+        updateMenu(); 
+
+        if (is3DMode) {
+            update3DScene(); // Rebuild the 3D scene with the new hinge position
+        }
+    }
+
+    /**
+     * Updates the side menu panel based on the currently selected object(s).
+     */
     function updateMenu(e) {
+        // Hide all editor sections first
         document.getElementById('selected-object-controls').style.display = 'none';
         document.getElementById('wall-editor-controls').style.display = 'none';
         document.getElementById('item-editor-controls').style.display = 'none';
@@ -630,10 +792,11 @@
         document.getElementById('door-editor-controls').style.display = 'none';
         
         const activeObjects = canvas2d.getActiveObjects();
-        if (activeObjects.length === 0) return;
+        if (activeObjects.length === 0) return; // Exit if nothing is selected
 
         document.getElementById('selected-object-controls').style.display = 'block';
 
+        // Only show detailed editors if a single object is selected
         if (activeObjects.length === 1) {
             const obj = activeObjects[0];
             if (obj.isWall) {
@@ -642,8 +805,10 @@
                 document.getElementById('edit-wall-angle').value = Math.round(obj.angle);
             } else if (obj.isItem) {
                 document.getElementById('item-editor-controls').style.display = 'block';
+                // Sync itemProps with the object's current dimensions on the canvas
                 obj.itemProps.width = obj.getScaledWidth() / scale;
                 obj.itemProps.depth = obj.getScaledHeight() / scale;
+                // Populate the input fields
                 document.getElementById('item-width').value = Math.round(obj.itemProps.width);
                 document.getElementById('item-depth').value = Math.round(obj.itemProps.depth);
                 document.getElementById('item-height').value = obj.itemProps.height;
@@ -654,28 +819,43 @@
                 document.getElementById('hole-width').value = Math.round(obj.holeProps.width);
                 document.getElementById('hole-height').value = obj.holeProps.height;
                 document.getElementById('hole-y-position').value = obj.holeProps.y;
+                document.getElementById('edit-hole-angle').value = Math.round(obj.angle);
             } else if (obj.isDoor) {
                 document.getElementById('door-editor-controls').style.display = 'block';
                 document.getElementById('door-width').value = obj.doorProps.width;
                 document.getElementById('door-height').value = obj.doorProps.height;
                 document.getElementById('door-color').value = obj.doorProps.color;
+                document.getElementById('edit-door-angle').value = Math.round(obj.angle);
+                // Update the hinge display text
+                const hingeText = (obj.doorProps.hingeCorner || 'topLeft')
+                    .replace('top', 'Top ')
+                    .replace('bottom', 'Bottom ')
+                    .replace('Left', 'Left')
+                    .replace('Right', 'Right');
+                document.getElementById('hinge-corner-display').textContent = hingeText;
             }
         }
     }
     
+    /**
+     * Updates the selected wall's properties based on the side menu inputs.
+     */
     function updateWallFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isWall) return;
         activeObject.set({
             width: document.getElementById('edit-wall-length').value * scale,
             angle: parseFloat(document.getElementById('edit-wall-angle').value),
-            scaleX: 1
+            scaleX: 1 // Reset scale to apply changes to width directly
         }).setCoords();
         canvas2d.requestRenderAll();
         updateTextForObject(activeObject);
         if(is3DMode) update3DScene();
     }
     
+    /**
+     * Updates the 3D color property for the selected wall(s).
+     */
     function update3DColorFromMenu() {
         const color = document.getElementById('wall-color').value;
         canvas2d.getActiveObjects().forEach(obj => {
@@ -684,6 +864,9 @@
         if (is3DMode) update3DScene();
     }
 
+    /**
+     * Updates the selected item's properties based on the side menu inputs.
+     */
     function updateItemFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isItem) return;
@@ -692,6 +875,7 @@
         props.depth = document.getElementById('item-depth').value;
         props.height = document.getElementById('item-height').value;
         props.y = parseFloat(document.getElementById('item-y-position').value) || 0;
+        // Update the 2D representation
         activeObject.set({
             width: props.width * scale,
             height: props.depth * scale,
@@ -701,6 +885,9 @@
         if (is3DMode) update3DScene();
     }
 
+    /**
+     * Updates the selected hole's properties based on the side menu inputs.
+     */
     function updateHoleFromMenu() {
         const activeObject = canvas2d.getActiveObject();
         if (!activeObject || !activeObject.isHole) return;
@@ -712,41 +899,80 @@
         canvas2d.requestRenderAll();
         if (is3DMode) update3DScene();
     }
+    
+    /**
+     * Updates the selected hole's angle from the menu input.
+     */
+    function updateHoleAngleFromMenu() {
+        const activeObject = canvas2d.getActiveObject();
+        if (!activeObject || !activeObject.isHole) return;
+        activeObject.set({
+            angle: parseFloat(document.getElementById('edit-hole-angle').value)
+        }).setCoords();
+        canvas2d.requestRenderAll();
+        if(is3DMode) update3DScene();
+    }
+    
+    /**
+     * Updates the selected door's angle from the menu input.
+     */
+     function updateDoorAngleFromMenu() {
+        const activeObject = canvas2d.getActiveObject();
+        if (!activeObject || !activeObject.isDoor) return;
+        activeObject.set({
+            angle: parseFloat(document.getElementById('edit-door-angle').value)
+        }).setCoords();
+        canvas2d.requestRenderAll();
+        if(is3DMode) update3DScene();
+    }
 
+    /**
+     * Recreates the selected door when its properties are changed in the menu.
+     */
     function updateDoorFromMenu() {
         const oldGroup = canvas2d.getActiveObject();
         if (!oldGroup || !oldGroup.isDoor) return;
 
+        // Collect new properties from the form
         const newProps = {
             width: parseFloat(document.getElementById('door-width').value),
             height: parseFloat(document.getElementById('door-height').value),
             color: document.getElementById('door-color').value,
-            swingDirection: oldGroup.doorProps.swingDirection
+            swingDirection: oldGroup.doorProps.swingDirection, // Preserve swing direction
+            hingeCorner: oldGroup.doorProps.hingeCorner // Preserve hinge corner
         };
 
+        // Preserve essential properties from the old door object
         const preservedProps = {
             left: oldGroup.left, top: oldGroup.top, angle: oldGroup.angle,
             uid: oldGroup.uid, textureURL: oldGroup.textureURL, scaleY: oldGroup.scaleY
         };
 
+        // Remove the old door and create a new one with the updated properties
         canvas2d.remove(oldGroup);
         const newGroup = createDoorGroup(newProps);
         newGroup.set(preservedProps);
-        newGroup.doorProps.textureURL = preservedProps.textureURL;
+        newGroup.doorProps.textureURL = preservedProps.textureURL; // Carry over the texture
 
         canvas2d.add(newGroup);
-        canvas2d.setActiveObject(newGroup);
+        canvas2d.setActiveObject(newGroup); // Make the new door the active object
         canvas2d.requestRenderAll();
         if (is3DMode) update3DScene();
     }
     
+    /**
+     * Toggles the visibility of all wall length labels.
+     */
     function toggleLengthVisibility() {
         showLengths = !showLengths;
         Object.values(lengthTextObjects).forEach(text => text.visible = showLengths);
-        if (showLengths) updateAllLengthTexts();
+        if (showLengths) updateAllLengthTexts(); // Recreate texts if turning them on
         canvas2d.requestRenderAll();
     }
 
+    /**
+     * Updates the text and position for every wall's length label.
+     */
     function updateAllLengthTexts() {
         const visibleObjects = new Set();
         canvas2d.getObjects().forEach(obj => {
@@ -755,28 +981,42 @@
                 visibleObjects.add(obj.uid);
             }
         });
+        // Hide texts for walls that no longer exist
         for (const uid in lengthTextObjects) {
             if (!visibleObjects.has(parseInt(uid))) lengthTextObjects[uid].visible = false;
         }
     }
 
+    /**
+     * Creates or updates the length label for a specific wall.
+     * @param {fabric.Rect} wall - The wall object.
+     */
     function updateLengthTextFor(wall) {
         let textObj = lengthTextObjects[wall.uid];
         if (!textObj) {
-            textObj = new fabric.Text('', { fontSize: 12, fill: 'black', originX: 'center', originY: 'center', selectable: false, evented: false });
+            // Create a new text object if it doesn't exist
+            textObj = new fabric.Text('', { 
+                fontSize: 12, fill: 'black', originX: 'center', originY: 'center', 
+                selectable: false, evented: false, isLengthText: true 
+            });
             lengthTextObjects[wall.uid] = textObj;
             canvas2d.add(textObj);
         }
         textObj.visible = true;
+        // Set the text content to the wall's length in millimeters
         textObj.text = `${Math.round(wall.getScaledWidth() / scale)} mm`;
+        // Position the text above the wall, aligned with its angle
         const d = fabric.util.qrDecompose(wall.calcTransformMatrix());
         const center = new fabric.Point(d.translateX, d.translateY);
-        const offset = new fabric.Point(0, -20);
+        const offset = new fabric.Point(0, -20); // 20 pixels above the wall's center
         const rotatedOffset = fabric.util.rotatePoint(offset, new fabric.Point(0,0), fabric.util.degreesToRadians(d.angle));
         textObj.set({ left: center.x + rotatedOffset.x, top: center.y + rotatedOffset.y, angle: d.angle });
         textObj.bringToFront();
     }
 
+    /**
+     * Adjusts canvas and camera sizes when the browser window is resized.
+     */
     function onWindowResize() {
         const w = canvasContainer.clientWidth, h = canvasContainer.clientHeight;
         canvas2d.setDimensions({ width: w, height: h });
@@ -787,15 +1027,19 @@
         }
     }
 
+    /**
+     * Toggles between the 2D (Fabric.js) and 3D (Three.js) views.
+     */
     function toggle3DMode() {
         is3DMode = !is3DMode;
         if (is3DMode) {
             document.getElementById('toggle-3d').textContent = 'Switch to 2D';
             canvas2d.getElement().style.display = 'none';
             canvas3d.style.display = 'block';
+            // Initialize 3D scene on first switch
             if (!renderer) init3D();
             onWindowResize();
-            update3DScene();
+            update3DScene(); // Build the 3D scene
         } else {
             document.getElementById('toggle-3d').textContent = 'Switch to 3D';
             canvas2d.getElement().style.display = 'block';
@@ -803,23 +1047,31 @@
         }
     }
     
+    /**
+     * Enables or disables user interaction with the 2D canvas objects.
+     * @param {boolean} enabled - Whether to enable or disable interaction.
+     */
     function setCanvasInteraction(enabled) {
         canvas2d.selection = enabled;
         canvas2d.forEachObject(o => o.set('evented', enabled));
     }
     
+    /**
+     * Toggles the "Draw Walls" mode on and off.
+     */
     function toggleDrawWallsMode() {
         const btn = document.getElementById('draw-walls-button');
         isDrawingWallsMode = !isDrawingWallsMode;
         if (isDrawingWallsMode) {
-            if(isMeteringMode) toggleMeteringMode();
+            if(isMeteringMode) toggleMeteringMode(); // Exit other modes
             btn.textContent = 'Finish Drawing';
             btn.classList.add('active');
-            setCanvasInteraction(false);
+            setCanvasInteraction(false); // Disable object selection
         } else {
             btn.textContent = 'Draw Walls';
             btn.classList.remove('active');
-            setCanvasInteraction(true);
+            setCanvasInteraction(true); // Re-enable object selection
+            // Clean up drawing state
             wallDrawingPoints = [];
             if(previewLine) canvas2d.remove(previewLine);
             previewLine = null;
@@ -827,6 +1079,11 @@
         }
     }
 
+    /**
+     * Creates a single wall segment between two points.
+     * @param {fabric.Point} p1 - The start point.
+     * @param {fabric.Point} p2 - The end point.
+     */
     function createWallSegment(p1, p2) {
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
@@ -840,11 +1097,14 @@
         updateLengthTextFor(wall);
     }
     
+    /**
+     * Toggles the "Metering" (measuring) mode on and off.
+     */
     function toggleMeteringMode() {
         const btn = document.getElementById('metering-button');
         isMeteringMode = !isMeteringMode;
         if (isMeteringMode) {
-            if(isDrawingWallsMode) toggleDrawWallsMode();
+            if(isDrawingWallsMode) toggleDrawWallsMode(); // Exit other modes
             btn.textContent = 'Cancel Metering';
             btn.classList.add('active');
             clearMetering();
@@ -857,6 +1117,9 @@
         }
     }
 
+    /**
+     * Removes all temporary metering lines, points, and text from the canvas.
+     */
     function clearMetering() {
         canvas2d.remove(...meteringObjects);
         meteringObjects = [];
@@ -864,35 +1127,48 @@
         canvas2d.requestRenderAll();
     }
 
+    /**
+     * Handles mouse movement, primarily to show the preview line in "Draw Walls" mode.
+     * @param {Event} opt - The fabric.js mouse:move event.
+     */
     function handleMouseMove(opt) {
         if (!isDrawingWallsMode || wallDrawingPoints.length === 0) return;
-        if (previewLine) canvas2d.remove(previewLine);
+        if (previewLine) canvas2d.remove(previewLine); // Remove old preview
         const pointer = canvas2d.getPointer(opt.e);
         const startPoint = wallDrawingPoints[wallDrawingPoints.length - 1];
+        // Create a new dashed preview line from the last point to the cursor
         previewLine = new fabric.Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
             stroke: 'rgba(0,0,0,0.3)', strokeWidth: 2, selectable: false, evented: false, strokeDashArray: [5, 5]
         });
         canvas2d.add(previewLine).requestRenderAll();
     }
 
+    /**
+     * Handles mouse clicks, specifically for placing points in "Draw Walls" or "Metering" mode.
+     * @param {Event} opt - The fabric.js mouse:down event.
+     */
     function handleMouseDown(opt) {
+        // Handle wall drawing
         if(isDrawingWallsMode) {
             const pointer = canvas2d.getPointer(opt.e);
             wallDrawingPoints.push(pointer);
             if (wallDrawingPoints.length > 1) {
+                // Create a wall segment from the previous point to the new one
                 createWallSegment(wallDrawingPoints[wallDrawingPoints.length - 2], pointer);
             }
             return;
         }
+        // Handle metering
         if (!isMeteringMode) return;
         const pointer = canvas2d.getPointer(opt.e);
+        // Check if the user is closing the metering loop by clicking near the start point
         if (meteringPoints.length > 2) {
             const startPoint = meteringPoints[0];
             const dist = Math.hypot(startPoint.x - pointer.x, startPoint.y - pointer.y);
-            if (dist < 10) {
+            if (dist < 10) { // Closing threshold of 10 pixels
                 drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
                 calculateAndShowArea();
-                isMeteringMode = false;
+                isMeteringMode = false; // Automatically exit metering mode
                 return;
             }
         }
@@ -908,6 +1184,11 @@
         }
     }
 
+    /**
+     * Draws a single red line with a length label for the metering tool.
+     * @param {fabric.Point} p1 - The start point.
+     * @param {fabric.Point} p2 - The end point.
+     */
     function drawMeteringLine(p1, p2) {
         const line = new fabric.Line([p1.x, p1.y, p2.x, p2.y], {
             stroke: 'red', strokeWidth: 2, selectable: false, evented: false, isMeteringObject: true
@@ -923,7 +1204,11 @@
         canvas2d.add(text);
     }
     
+    /**
+     * Calculates the area of the completed metering polygon and displays it.
+     */
     function calculateAndShowArea() {
+        // Shoelace formula to calculate polygon area
         let areaPx = 0;
         for (let i = 0; i < meteringPoints.length; i++) {
             const p1 = meteringPoints[i];
@@ -931,7 +1216,9 @@
             areaPx += (p1.x * p2.y - p2.x * p1.y);
         }
         areaPx = Math.abs(areaPx) / 2;
+        // Convert pixel area to square meters
         const areaM2 = areaPx * (1 / scale / 1000)**2;
+        // Calculate the centroid of the polygon to place the area text
         let centroid = meteringPoints.reduce((acc, p) => ({x: acc.x + p.x, y: acc.y + p.y}), {x:0, y:0});
         centroid.x /= meteringPoints.length;
         centroid.y /= meteringPoints.length;
@@ -943,22 +1230,30 @@
         canvas2d.add(areaText);
     }
 
-    // --- 3D Scene Management ---
+    // --- 3D SCENE MANAGEMENT (THREE.JS) ---
+
+    /**
+     * Initializes the Three.js scene, camera, renderer, lights, and controls.
+     */
     function init3D() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
+        scene.background = new THREE.Color(0x000000); // Black background
         camera = new THREE.PerspectiveCamera(75, canvasContainer.clientWidth / canvasContainer.clientHeight, 1, 20000);
         camera.position.set(500, 800, 1300);
+        // Use preserveDrawingBuffer for screenshot capability
         renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
         renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
         canvas3d.appendChild(renderer.domElement);
+        // Lighting
         scene.add(new THREE.AmbientLight(0xffffff, 0.7));
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
         dirLight.position.set(150, 200, 100);
         scene.add(dirLight);
         
+        // Floor
         const floorGeometry = new THREE.PlaneGeometry(10000, 10000);
         const materialConfig = {};
+        // Apply texture if one is loaded
         if (floorTextureURL) {
             const texture = new THREE.TextureLoader().load(floorTextureURL);
             texture.wrapS = THREE.RepeatWrapping;
@@ -971,14 +1266,19 @@
         }
         const floorMaterial = new THREE.MeshStandardMaterial(materialConfig);
         floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
+        floor.rotation.x = -Math.PI / 2; // Lay the plane flat
         scene.add(floor);
+        // Controls
         controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableKeys = false;
+        controls.enableKeys = false; // Disable default keys to use our own
         camera.lookAt(controls.target);
     }
     
+    /**
+     * Clears and rebuilds the entire 3D scene from the current 2D canvas objects.
+     */
     function update3DScene() {
+        // Update floor material (color or texture)
         if (floor) {
             if (floorTextureURL) {
                 if (!floor.material.map || floor.material.map.image.src !== floorTextureURL) {
@@ -997,9 +1297,11 @@
             }
         }
 
+        // Clear existing 3D objects
         Object.values(sceneObjects3D).forEach(obj => scene.remove(obj));
         sceneObjects3D = {};
 
+        // Get all objects from the 2D canvas
         const allObjects = canvas2d.getObjects();
         const walls = allObjects.filter(o => o.isWall);
         const items = allObjects.filter(o => o.isItem);
@@ -1008,15 +1310,25 @@
         const wallHeight = document.getElementById('wall-height').value;
         const defaultWallColor = '#ffffff'; 
 
+        // Create 3D objects in a specific order
         items.forEach(item2d => create3DItem(item2d));
         doors.forEach(door2d => {
+            // Find the wall this door belongs to
             const wall = walls.find(w => w.intersectsWithObject(door2d));
             create3DDoor(door2d, wall);
         });
+        // Combine holes and doors as "openings" for wall generation
         const openings = [...holes, ...doors];
         walls.forEach(wall2d => create3DWall(wall2d, wallHeight, defaultWallColor, openings));
     }
 
+    /**
+     * Creates a 3D wall with holes, based on a 2D wall object and intersecting openings.
+     * @param {fabric.Rect} wall2d - The 2D wall object.
+     * @param {number} wallHeight_mm - The height of the wall in millimeters.
+     * @param {string} defaultColor - The default color for walls.
+     * @param {Array} allOpenings - An array of all 2D hole and door objects.
+     */
     function create3DWall(wall2d, wallHeight_mm, defaultColor, allOpenings) {
         wall2d.setCoords();
 
@@ -1037,25 +1349,32 @@
         const wallTopLeft_canvas = wall2d.getPointByOrigin('left', 'top');
 
         intersectingOpenings.forEach(opening2d => {
-            let props, width_mm, height_mm, y_mm;
+            let props, height_mm, y_mm;
+            let openingRefPoint_canvas, openingWidth_scene;
+            
+            // Get the reference point and dimensions for any opening.
             if (opening2d.isHole) {
                 props = opening2d.holeProps;
-                width_mm = props.width; height_mm = props.height; y_mm = props.y;
+                height_mm = props.height; y_mm = props.y;
+                openingRefPoint_canvas = opening2d.getCenterPoint();
             } else if (opening2d.isDoor) {
                 props = opening2d.doorProps;
-                width_mm = props.width; height_mm = props.height; y_mm = 0;
+                height_mm = props.height; y_mm = 0;
+                openingRefPoint_canvas = opening2d.getCenterPoint();
             }
+            openingWidth_scene = opening2d.getScaledWidth();
 
-            const openingWidth_scene = width_mm * scale;
             const openingHeight_scene = height_mm * scale;
             const openingY_scene = y_mm * scale;
             
-            const openingRefPoint_canvas = opening2d.isDoor ? new fabric.Point(opening2d.left, opening2d.top) : opening2d.getCenterPoint();
+            // Transform the opening's absolute canvas center point into the wall's local coordinates.
             const vectorFromWallOrigin = openingRefPoint_canvas.subtract(wallTopLeft_canvas);
             const rotatedVector = fabric.util.rotatePoint(vectorFromWallOrigin, new fabric.Point(0,0), -wallAngle_rad);
 
-            const openingStartX_scene = opening2d.isDoor ? rotatedVector.x : rotatedVector.x - (openingWidth_scene / 2);
+            // The start of the hole is the transformed center minus half the width.
+            const openingStartX_scene = rotatedVector.x - (openingWidth_scene / 2);
             
+            // Define the path for the hole.
             const holePath = new THREE.Path();
             holePath.moveTo(openingStartX_scene, openingY_scene);
             holePath.lineTo(openingStartX_scene + openingWidth_scene, openingY_scene);
@@ -1088,6 +1407,10 @@
         scene.add(wall3d);
     }
     
+    /**
+     * Creates a 3D item (box) from a 2D item object.
+     * @param {fabric.Rect} item2d - The 2D item object.
+     */
     function create3DItem(item2d) {
         const props = item2d.itemProps;
         const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, props.depth * scale);
@@ -1114,13 +1437,22 @@
         scene.add(item3d);
     }
 
+    /**
+     * Creates a 3D door from a 2D door object.
+     * @param {fabric.Group} door2d - The 2D door group.
+     * @param {fabric.Rect} wall2d - The wall the door is on.
+     */
     function create3DDoor(door2d, wall2d) {
         const props = door2d.doorProps;
+        const hingeCorner = props.hingeCorner || 'topLeft';
         const doorThickness_mm = 40; 
         const geometry = new THREE.BoxGeometry(props.width * scale, props.height * scale, doorThickness_mm * scale);
         
-        // Translate geometry to set the pivot point to the left edge.
-        geometry.translate((props.width * scale) / 2, 0, 0);
+        if (hingeCorner.includes('Right')) {
+            geometry.translate(-(props.width * scale) / 2, 0, 0); 
+        } else {
+            geometry.translate((props.width * scale) / 2, 0, 0); 
+        }
 
         let material;
         if (door2d.textureURL) {
@@ -1130,34 +1462,40 @@
             material = new THREE.MeshStandardMaterial({ color: props.color });
         }
         const door3d = new THREE.Mesh(geometry, material);
-        const doorAngle_rad = -fabric.util.degreesToRadians(door2d.angle);
         
-        const hingePoint = new fabric.Point(door2d.left, door2d.top);
+        door2d.setCoords(); 
+        let hingePoint;
+        switch (hingeCorner) {
+            case 'topLeft': hingePoint = door2d.aCoords.tl; break;
+            case 'topRight': hingePoint = door2d.aCoords.tr; break;
+            case 'bottomLeft': hingePoint = door2d.aCoords.bl; break;
+            case 'bottomRight': hingePoint = door2d.aCoords.br; break;
+            default: hingePoint = door2d.aCoords.tl;
+        }
         
         door3d.position.set(
             hingePoint.x - canvas2d.width / 2,
             (props.height * scale) / 2,
             hingePoint.y - canvas2d.height / 2
         );
+        
+        const doorAngle_rad = -fabric.util.degreesToRadians(door2d.angle);
         door3d.rotation.y = doorAngle_rad;
-        
-        const wallThickness_scene = wall2d ? wall2d.getScaledHeight() : 100 * scale;
-        
-        // Offset the door from the wall's centerline to its face, respecting the swing direction
-        const offset = new THREE.Vector3(0, 0, (wallThickness_scene / 2) * props.swingDirection);
-        offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), doorAngle_rad);
-        door3d.position.add(offset);
         
         door3d.userData.isDoor = true;
         door3d.userData.isOpen = false;
         door3d.userData.isAnimating = false;
         door3d.userData.swingDirection = props.swingDirection;
         door3d.userData.originalRotationY = door3d.rotation.y;
+        door3d.userData.hingeCorner = hingeCorner; 
         
         sceneObjects3D[door2d.uid] = door3d;
         scene.add(door3d);
     }
 
+    /**
+     * Finds the closest door to the camera and toggles its open/closed state.
+     */
     function toggleClosestDoor() {
         let closestDoor = null;
         let minDistance = 2000;
@@ -1180,23 +1518,28 @@
             closestDoor.userData.animationProgress = 0;
             closestDoor.userData.startRotationY = closestDoor.rotation.y;
 
-            const openAngle = closestDoor.userData.originalRotationY + ((Math.PI / 2) * closestDoor.userData.swingDirection);
+            let openAngleDirection = -1;
+            if (closestDoor.userData.hingeCorner.includes('Right')) {
+                openAngleDirection = 1; 
+            }
+            
+            const openAngle = closestDoor.userData.originalRotationY - ((Math.PI / 2) * openAngleDirection * closestDoor.userData.swingDirection);
             closestDoor.userData.targetRotationY = closestDoor.userData.isOpen ? openAngle : closestDoor.userData.originalRotationY;
         }
     }
 
-    // --- Main Animation Loop ---
+    // --- MAIN ANIMATION LOOP ---
     function animate() {
-        requestAnimationFrame(animate);
-        const delta = clock.getDelta();
+        requestAnimationFrame(animate); 
+        const delta = clock.getDelta(); 
 
         if (is3DMode) {
-            handle3DCameraMovement();
-            controls.update();
+            handle3DCameraMovement(); 
+            controls.update(); 
 
             scene.children.forEach(child => {
                 if (child.userData.isAnimating) {
-                    child.userData.animationProgress += delta * 2;
+                    child.userData.animationProgress += delta * 2; 
                     child.rotation.y = THREE.MathUtils.lerp(child.userData.startRotationY, child.userData.targetRotationY, child.userData.animationProgress);
 
                     if (child.userData.animationProgress >= 1) {
@@ -1207,14 +1550,14 @@
                 }
             });
 
-            renderer.render(scene, camera);
+            renderer.render(scene, camera); 
         } else {
-            handle2DPan();
+            handle2DPan(); 
             if(!isDrawingWallsMode) canvas2d.renderAll();
         }
     }
 
-    // Initial setup
+    // Initial setup call
     animate();
 
 </script>
