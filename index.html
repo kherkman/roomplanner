@@ -21,7 +21,7 @@
         #menu h3 { margin-top: 0; }
         #menu .input-group { margin-bottom: 15px; }
         #menu label { display: block; margin-bottom: 5px; }
-        #menu input, #menu button {
+        #menu input, #menu button, #menu select {
             width: 100%;
             padding: 8px;
             box-sizing: border-box;
@@ -36,8 +36,8 @@
         #menu button:hover { background-color: #0056b3; }
         #menu .control-section button, #menu #metering-button.active, #menu #draw-walls-button.active { background-color: #dc3545; }
         #menu .control-section button:hover, #menu #metering-button.active:hover, #menu #draw-walls-button.active:hover { background-color: #c82333; }
-        #menu #load-button, #menu #save-screenshot-button, #menu #apply-texture-button, #menu #apply-floor-texture-button { background-color: #28a745; }
-        #menu #load-button:hover, #menu #save-screenshot-button:hover, #menu #apply-texture-button:hover, #menu #apply-floor-texture-button:hover { background-color: #218838; }
+        #menu #load-button, #menu #save-screenshot-button, #menu #apply-texture-button, #menu #apply-floor-texture-button, #menu #load-draft-button, #menu #apply-predefined-texture-button, #menu #load-demo-button, #menu #apply-predefined-floor-texture-button { background-color: #28a745; }
+        #menu #load-button:hover, #menu #save-screenshot-button:hover, #menu #apply-texture-button:hover, #menu #apply-floor-texture-button:hover, #menu #load-draft-button:hover, #menu #apply-predefined-texture-button:hover, #menu #load-demo-button:hover, #menu #apply-predefined-floor-texture-button:hover { background-color: #218838; }
         #menu #info-button, #menu #change-hinge-corner-button { background-color: #17a2b8; }
         #menu #info-button:hover, #menu #change-hinge-corner-button:hover { background-color: #138496; }
 
@@ -100,6 +100,16 @@
     <button id="save-button">Save to File</button>
     <button id="load-button" onclick="document.getElementById('file-input').click()">Load from File</button>
     <input type="file" id="file-input" style="display: none;" accept=".json">
+    <button id="load-demo-button">Load Demo Plan</button>
+    <button id="load-draft-button" onclick="document.getElementById('draft-file-input').click()">Load Draft Image</button>
+    <input type="file" id="draft-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
+    <div id="draft-controls" style="display: none;">
+        <div class="input-group">
+            <label for="draft-scale">Draft Scale:</label>
+            <input type="number" id="draft-scale" value="1.0" step="0.1">
+        </div>
+        <button id="remove-draft-button">Remove Draft</button>
+    </div>
     <button id="save-screenshot-button">Save Screenshot (JPG)</button>
     <hr>
     <h3>Insert</h3>
@@ -121,8 +131,19 @@
     <div id="selected-object-controls" class="control-section" style="display: none;">
         <hr><h3>Selected Object</h3>
         <button id="remove-object">Remove Selected</button>
-        <button id="apply-texture-button" onclick="document.getElementById('texture-file-input').click()">Apply Texture</button>
+        <button id="apply-texture-button" onclick="document.getElementById('texture-file-input').click()">Apply Custom Texture</button>
         <input type="file" id="texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
+        <div class="input-group">
+            <label for="predefined-texture-select">Apply Predefined Texture:</label>
+            <select id="predefined-texture-select">
+                <option value="">-- Select Texture --</option>
+                <option value="texture1.jpg">Texture 1</option>
+                <option value="texture2.jpg">Texture 2</option>
+                <option value="texture3.jpg">Texture 3</option>
+                <option value="texture4.jpg">Texture 4</option>
+            </select>
+            <button id="apply-predefined-texture-button">Apply Selected Texture</button>
+        </div>
         <!-- Wall-specific controls -->
         <div id="wall-editor-controls" style="display: none;">
             <div class="input-group">
@@ -178,8 +199,9 @@
             <label for="floor-color">Floor Color:</label>
             <input type="color" id="floor-color" value="#808080">
         </div>
-        <button id="apply-floor-texture-button" onclick="document.getElementById('floor-texture-file-input').click()">Apply Floor Texture</button>
+        <button id="apply-floor-texture-button" onclick="document.getElementById('floor-texture-file-input').click()">Apply Custom Floor Texture</button>
         <input type="file" id="floor-texture-file-input" style="display: none;" accept=".jpg,.jpeg,.png">
+        <button id="apply-predefined-floor-texture-button">Apply Predefined Floor Texture</button>
         <div class="input-group">
             <label for="wall-height">Default Wall Height (mm):</label>
             <input type="number" id="wall-height" value="2400">
@@ -247,6 +269,9 @@
     const customProps = ['isWall', 'isItem', 'itemProps', 'isHole', 'holeProps', 'isDoor', 'doorProps', 'uid', 'color3d', 'textureURL'];
     let lengthTextObjects = {}; // Dictionary to hold length text objects, keyed by wall UID
 
+    // Draft Image
+    let draftImage = null; // Holds the fabric.Image object for the draft
+
     // --- MODE STATES ---
     let isMeteringMode = false; // Is the user currently using the measuring tool?
     let meteringPoints = []; // Array of points for the metering polygon
@@ -279,8 +304,20 @@
     // Wire up menu buttons to their respective functions
     document.getElementById('save-button').addEventListener('click', saveToFile);
     document.getElementById('file-input').addEventListener('change', loadFromFile);
+    document.getElementById('load-demo-button').addEventListener('click', loadDemoPlan);
+    document.getElementById('draft-file-input').addEventListener('change', loadDraftImage);
+    document.getElementById('draft-scale').addEventListener('input', updateDraftScale);
+    document.getElementById('remove-draft-button').addEventListener('click', removeDraftImage);
+
     document.getElementById('texture-file-input').addEventListener('change', applyTexture);
+    document.getElementById('predefined-texture-select').addEventListener('change', () => {
+        // Clear selection when custom texture is applied, or vice-versa
+        document.getElementById('texture-file-input').value = ''; 
+    });
+    document.getElementById('apply-predefined-texture-button').addEventListener('click', applyPredefinedTextureFromMenu);
+
     document.getElementById('floor-texture-file-input').addEventListener('change', applyFloorTexture);
+    document.getElementById('apply-predefined-floor-texture-button').addEventListener('click', applyPredefinedFloorTextureFromMenu);
     document.getElementById('save-screenshot-button').addEventListener('click', saveScreenshot);
     document.getElementById('info-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'block');
     document.querySelector('.close-button').addEventListener('click', () => document.getElementById('info-modal').style.display = 'none');
@@ -392,6 +429,17 @@
         json.objects = originalObjects.map(o => o.toObject(customProps));
         // Add the floor texture URL to the save file
         json.floorTextureURL = floorTextureURL;
+
+        // Add draft image data if it exists
+        if (draftImage) {
+            json.draftImage = {
+                src: draftImage.getSrc(),
+                scaleX: draftImage.scaleX,
+                scaleY: draftImage.scaleY,
+                left: draftImage.left,
+                top: draftImage.top
+            };
+        }
         
         // Create a downloadable link for the JSON data
         const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(json, null, 2))}`;
@@ -428,6 +476,83 @@
     }
 
     /**
+     * Centralized function to load plan data (objects, draft image, etc.) into the canvas.
+     * @param {object} data - The parsed JSON data of the plan.
+     */
+    function _loadPlanDataToCanvas(data) {
+        // Restore the floor texture URL
+        floorTextureURL = data.floorTextureURL || null;
+
+        // Load the JSON data into the Fabric canvas
+        canvas2d.loadFromJSON(data, () => {
+            const objectsToLoad = [];
+            // Fabric's default loader doesn't handle complex groups well, so we rebuild doors manually.
+            canvas2d.getObjects().forEach(obj => {
+                // Recreate door groups using our custom function
+                if(obj.isDoor) {
+                    const doorGroup = createDoorGroup(obj.doorProps);
+                    // Restore all position, angle, scale, and custom properties
+                    doorGroup.set({ 
+                        left: obj.left, 
+                        top: obj.top, 
+                        angle: obj.angle, 
+                        uid: obj.uid, 
+                        textureURL: obj.textureURL, 
+                        scaleY: obj.doorProps.swingDirection || 1 // scaleY represents mirrored state
+                    });
+                    // Restore hinge corner property if it exists in the file
+                    if (obj.doorProps.hingeCorner) {
+                        doorGroup.doorProps.hingeCorner = obj.doorProps.hingeCorner;
+                    }
+                    objectsToLoad.push(doorGroup);
+                } else {
+                    // Ensure every object has a UID
+                    if (obj.uid === undefined) obj.uid = ++uidCounter;
+                    objectsToLoad.push(obj);
+                }
+            });
+            
+            // Clear the canvas and add the newly created/restored objects
+            canvas2d.clear();
+            objectsToLoad.forEach(obj => canvas2d.add(obj));
+
+            updateAllLengthTexts(); // Recreate all wall length labels
+            canvas2d.requestRenderAll();
+
+            // Restore draft image if present
+            if (data.draftImage && data.draftImage.src) {
+                fabric.Image.fromURL(data.draftImage.src, function(img) {
+                    draftImage = img;
+                    draftImage.set({
+                        left: data.draftImage.left,
+                        top: data.draftImage.top,
+                        scaleX: data.draftImage.scaleX,
+                        scaleY: data.draftImage.scaleY,
+                        selectable: false,
+                        evented: false,
+                        hasControls: false,
+                        hasBorders: false,
+                        opacity: 0.7 // Make it slightly transparent
+                    });
+                    canvas2d.add(draftImage);
+                    draftImage.sendToBack(); // Ensure it's behind everything
+                    document.getElementById('draft-scale').value = draftImage.scaleX;
+                    document.getElementById('draft-controls').style.display = 'block';
+                    canvas2d.requestRenderAll();
+                }, {crossOrigin: 'anonymous'});
+            } else {
+                removeDraftImage(); // Ensure no old draft remains
+            }
+
+            // Always rebuild the 3D scene if the renderer is initialized, even if not currently in 3D mode.
+            // This ensures objects are ready when the user switches to 3D.
+            if (renderer) { 
+                update3DScene();
+            }
+        });
+    }
+
+    /**
      * Loads a plan from a user-selected JSON file, clearing the current canvas and
      * rebuilding the scene from the file's data.
      * @param {Event} e - The file input change event.
@@ -438,55 +563,47 @@
         const reader = new FileReader();
         reader.onload = (f) => {
             const data = JSON.parse(f.target.result);
-            // Restore the floor texture URL
-            floorTextureURL = data.floorTextureURL || null;
-
-            // Load the JSON data into the Fabric canvas
-            canvas2d.loadFromJSON(data, () => {
-                const objectsToLoad = [];
-                // Fabric's default loader doesn't handle complex groups well, so we rebuild doors manually.
-                canvas2d.getObjects().forEach(obj => {
-                    // Recreate door groups using our custom function
-                    if(obj.isDoor) {
-                        const doorGroup = createDoorGroup(obj.doorProps);
-                        // Restore all position, angle, scale, and custom properties
-                        doorGroup.set({ 
-                            left: obj.left, 
-                            top: obj.top, 
-                            angle: obj.angle, 
-                            uid: obj.uid, 
-                            textureURL: obj.textureURL, 
-                            scaleY: obj.doorProps.swingDirection || 1 // scaleY represents mirrored state
-                        });
-                        // Restore hinge corner property if it exists in the file
-                        if (obj.doorProps.hingeCorner) {
-                            doorGroup.doorProps.hingeCorner = obj.doorProps.hingeCorner;
-                        }
-                        objectsToLoad.push(doorGroup);
-                    } else {
-                        // Ensure every object has a UID
-                        if (obj.uid === undefined) obj.uid = ++uidCounter;
-                        objectsToLoad.push(obj);
-                    }
-                });
-                
-                // Clear the canvas and add the newly created/restored objects
-                canvas2d.clear();
-                objectsToLoad.forEach(obj => canvas2d.add(obj));
-
-                updateAllLengthTexts(); // Recreate all wall length labels
-                canvas2d.requestRenderAll();
-
-                // If in 3D mode, rebuild the 3D scene from the new data
-                if (is3DMode) {
-                    update3DScene();
-                }
-            });
+            _loadPlanDataToCanvas(data);
         };
         reader.readAsText(file);
         e.target.value = ''; // Reset the file input
     }
-    
+
+    /**
+     * Loads a predefined demo plan from 'demoplan.json'.
+     */
+    async function loadDemoPlan() {
+        try {
+            const response = await fetch('demoplan.json');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            _loadPlanDataToCanvas(data);
+            console.log("Demo plan loaded successfully.");
+        } catch (error) {
+            console.error("Failed to load demo plan:", error);
+            alert("Failed to load demo plan. Make sure 'demoplan.json' exists in the root directory.");
+        }
+    }
+
+    /**
+     * Helper function to apply a texture URL to selected objects.
+     * @param {string} dataURL - The texture image as a Data URL or regular URL.
+     */
+    function _applyTextureToSelectedObjects(dataURL) {
+        const activeObjects = canvas2d.getActiveObjects();
+        if (activeObjects.length === 0) return;
+        
+        activeObjects.forEach(obj => {
+            obj.textureURL = dataURL;
+            if (obj.isDoor) {
+                obj.doorProps.textureURL = dataURL; // For doors, store it in props too
+            }
+        });
+        if (is3DMode) update3DScene();
+    }
+
     /**
      * Applies a user-selected image file as a texture to the currently selected object(s).
      * @param {Event} e - The file input change event.
@@ -497,22 +614,41 @@
 
         const reader = new FileReader();
         reader.onload = (f) => {
-            const dataURL = f.target.result; // The texture image as a Data URL
-            const activeObjects = canvas2d.getActiveObjects();
-            if (activeObjects.length === 0) return;
-            
-            // Apply the texture URL to each selected object
-            activeObjects.forEach(obj => {
-                obj.textureURL = dataURL;
-                 // For doors, store it in the props as well for persistence
-                 if (obj.isDoor) {
-                    obj.doorProps.textureURL = dataURL;
-                }
-            });
-            if (is3DMode) update3DScene(); // Rebuild 3D scene to show new texture
+            _applyTextureToSelectedObjects(f.target.result);
         };
         reader.readAsDataURL(file);
         e.target.value = '';
+        document.getElementById('predefined-texture-select').value = ''; // Clear dropdown selection
+    }
+
+    /**
+     * Applies a predefined texture from the dropdown menu to the selected object(s).
+     */
+    function applyPredefinedTextureFromMenu() {
+        const selectedTexture = document.getElementById('predefined-texture-select').value;
+        if (!selectedTexture) return; // No texture selected
+
+        // Assuming textures are in the root folder, or provide full path
+        _applyTextureToSelectedObjects(selectedTexture);
+        document.getElementById('texture-file-input').value = ''; // Clear custom file input
+    }
+
+    /**
+     * Helper function to apply a texture URL to the 3D floor.
+     * @param {string} textureUrl - The URL (or Data URL) of the floor texture.
+     */
+    function _applyFloorTextureFromURL(textureUrl) {
+        floorTextureURL = textureUrl;
+        // If in 3D mode, apply the new texture immediately
+        if (is3DMode && floor) {
+            const texture = new THREE.TextureLoader().load(floorTextureURL);
+            texture.wrapS = THREE.RepeatWrapping; // Repeat texture horizontally
+            texture.wrapT = THREE.RepeatWrapping; // Repeat texture vertically
+            texture.repeat.set(20, 20); // How many times to repeat
+            floor.material.map = texture;
+            floor.material.color.set(0xffffff); // Reset color to show texture fully
+            floor.material.needsUpdate = true;
+        }
     }
     
     /**
@@ -524,21 +660,90 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (f) => {
-            floorTextureURL = f.target.result;
-            // If in 3D mode, apply the new texture immediately
-            if (is3DMode && floor) {
-                const texture = new THREE.TextureLoader().load(floorTextureURL);
-                texture.wrapS = THREE.RepeatWrapping; // Repeat texture horizontally
-                texture.wrapT = THREE.RepeatWrapping; // Repeat texture vertically
-                texture.repeat.set(20, 20); // How many times to repeat
-                floor.material.map = texture;
-                floor.material.color.set(0xffffff); // Reset color to show texture fully
-                floor.material.needsUpdate = true;
-            }
+            _applyFloorTextureFromURL(f.target.result);
         };
         reader.readAsDataURL(file);
         e.target.value = '';
     }
+
+    /**
+     * Applies a predefined floor texture from the dropdown menu.
+     */
+    function applyPredefinedFloorTextureFromMenu() {
+        const selectedTexture = document.getElementById('predefined-texture-select').value;
+        if (!selectedTexture) {
+            alert("Please select a texture from the dropdown first.");
+            return;
+        }
+        _applyFloorTextureFromURL(selectedTexture);
+        document.getElementById('floor-texture-file-input').value = ''; // Clear custom file input
+    }
+
+
+    /**
+     * Loads a user-selected JPG file as a background draft image in 2D mode.
+     * @param {Event} e - The file input change event.
+     */
+    function loadDraftImage(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (f) => {
+            fabric.Image.fromURL(f.target.result, function(img) {
+                if (draftImage) {
+                    canvas2d.remove(draftImage); // Remove previous draft if exists
+                }
+                draftImage = img;
+                draftImage.set({
+                    left: canvas2d.width / 2,
+                    top: canvas2d.height / 2,
+                    originX: 'center',
+                    originY: 'center',
+                    selectable: false,
+                    evented: false,
+                    hasControls: false,
+                    hasBorders: false,
+                    opacity: 0.7 // Make it slightly transparent
+                });
+                canvas2d.add(draftImage);
+                draftImage.sendToBack(); // Ensure it's behind all other objects
+                canvas2d.requestRenderAll();
+                document.getElementById('draft-scale').value = draftImage.scaleX;
+                document.getElementById('draft-controls').style.display = 'block';
+            }, {crossOrigin: 'anonymous'}); // For loading data URLs or external images
+        };
+        reader.readAsDataURL(file);
+        e.target.value = ''; // Reset the file input
+    }
+
+    /**
+     * Updates the scale of the loaded draft image based on user input.
+     */
+    function updateDraftScale() {
+        if (!draftImage) return;
+        const newScale = parseFloat(document.getElementById('draft-scale').value);
+        if (!isNaN(newScale) && newScale > 0) {
+            draftImage.set({
+                scaleX: newScale,
+                scaleY: newScale
+            }).setCoords();
+            canvas2d.requestRenderAll();
+        }
+    }
+
+    /**
+     * Removes the loaded draft image from the canvas.
+     */
+    function removeDraftImage() {
+        if (draftImage) {
+            canvas2d.remove(draftImage);
+            draftImage = null;
+            document.getElementById('draft-controls').style.display = 'none';
+            canvas2d.requestRenderAll();
+        }
+    }
+
 
     /**
      * Handles global key presses for actions like delete, zoom, and mode switching.
@@ -1002,7 +1207,7 @@
             lengthTextObjects[wall.uid] = textObj;
             canvas2d.add(textObj);
         }
-        textObj.visible = true;
+        textObj.visible = showLengths;
         // Set the text content to the wall's length in millimeters
         textObj.text = `${Math.round(wall.getScaledWidth() / scale)} mm`;
         // Position the text above the wall, aligned with its angle
@@ -1053,7 +1258,11 @@
      */
     function setCanvasInteraction(enabled) {
         canvas2d.selection = enabled;
-        canvas2d.forEachObject(o => o.set('evented', enabled));
+        canvas2d.forEachObject(o => {
+            if (o !== draftImage) { // Keep draft image non-interactive
+                o.set('evented', enabled);
+            }
+        });
     }
     
     /**
@@ -1095,6 +1304,8 @@
         });
         canvas2d.add(wall);
         updateLengthTextFor(wall);
+        wall.sendToBack(); // Ensure walls are behind other objects
+        if (draftImage) draftImage.sendToBack(); // Keep draft at the very back
     }
     
     /**
@@ -1169,6 +1380,9 @@
                 drawMeteringLine(meteringPoints[meteringPoints.length - 1], startPoint);
                 calculateAndShowArea();
                 isMeteringMode = false; // Automatically exit metering mode
+                document.getElementById('metering-button').classList.remove('active');
+                document.getElementById('metering-button').textContent = 'Start Metering';
+                setCanvasInteraction(true);
                 return;
             }
         }
@@ -1196,7 +1410,7 @@
         meteringObjects.push(line);
         canvas2d.add(line);
         const lengthMM = Math.hypot(p1.x - p2.x, p1.y - p2.y) / scale;
-        const text = new fabric.Text(`${Math.round(lengthMM)} mm`, {
+        const text = new fabric.Text(`${lengthMM.toFixed(0)} mm`, {
             left: (p1.x + p2.x) / 2, top: (p1.y + p2.y) / 2, fontSize: 14,
             fill: 'black', originX: 'center', originY: 'center', isMeteringObject: true
         });
@@ -1387,12 +1601,36 @@
         const extrudeSettings = { steps: 1, depth: wallThickness_scene, bevelEnabled: false };
         const geometry = new THREE.ExtrudeGeometry(wallShape, extrudeSettings);
 
+        // --- UV Mapping Fix for Extruded Walls ---
+        const uvAttribute = geometry.attributes.uv;
+        const positionAttribute = geometry.attributes.position;
+
+        // Define the texture repeat unit in scene units (e.g., 1 meter)
+        const textureUnit_mm = 1000; // 1 meter
+        const textureUnit_scene = textureUnit_mm * scale; // 1 meter in scene units (pixels)
+
+        // Iterate through all vertices and remap their UVs
+        for (let i = 0; i < uvAttribute.count; i++) {
+            const x = positionAttribute.getX(i); // Local X position (along wall length)
+            const y = positionAttribute.getY(i); // Local Y position (along wall height)
+
+            // New U coordinate: x-position divided by desired texture repeat size (in scene units)
+            const newU = x / textureUnit_scene;
+            // New V coordinate: y-position divided by desired texture repeat size (in scene units)
+            const newV = y / textureUnit_scene;
+
+            uvAttribute.setXY(i, newU, newV);
+        }
+        uvAttribute.needsUpdate = true; // Mark UVs as updated for Three.js
+
         let material;
         if (wall2d.textureURL) {
             const texture = new THREE.TextureLoader().load(wall2d.textureURL);
             texture.wrapS = THREE.RepeatWrapping;
             texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set( (wall2d.getScaledWidth() / scale) / 1000, wallHeight_mm / 1000);
+            // Now that UVs are mapped to world meters, we set repeat to (1,1)
+            // assuming the texture itself is designed to be a 1x1 meter repeating tile.
+            texture.repeat.set(1, 1); 
             material = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
         } else {
             const color = wall2d.color3d || defaultColor;
